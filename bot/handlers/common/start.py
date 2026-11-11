@@ -9,11 +9,11 @@ from aiogram import Bot, F, Router
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, Message, ReplyKeyboardRemove
+from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.config import Settings
-from bot.db.models import AddressForm, Role, StaffProfile, User
+from bot.db.models import AddressForm, Customer, Role, StaffProfile, User
 from bot.db.session import read_session, uow
 from bot.keyboards import common as kb
 from bot.services import pending
@@ -80,14 +80,15 @@ async def on_name(message: Message, state: FSMContext) -> None:
         return
     await state.update_data(name=name)
     await state.set_state(Reg.address_form)
-    await message.answer(t.ASK_ADDRESS_FORM, reply_markup=ReplyKeyboardRemove())
-    await message.answer(t.POINT_DOWN, reply_markup=kb.address_form())
+    await message.answer(t.ASK_ADDRESS_FORM, reply_markup=kb.address_form())
 
 
 @router.callback_query(Reg.address_form, kb.RegCb.filter(F.step == "form"))
 async def on_form(cb: CallbackQuery, callback_data: kb.RegCb, state: FSMContext) -> None:
     await cb.answer()
-    await state.update_data(address_form=AddressForm(callback_data.value).value)
+    if callback_data.value not in {f.value for f in AddressForm}:
+        return  # soxta callback
+    await state.update_data(address_form=callback_data.value)
     await state.set_state(Reg.phone)
     if isinstance(cb.message, Message):
         await cb.message.answer(t.ASK_PHONE, reply_markup=kb.share_phone())
@@ -122,6 +123,7 @@ async def on_contact(
             name=data.get("name") or message.from_user.first_name,
             address_form=AddressForm(data.get("address_form", AddressForm.OPA.value)),
             admin_phones=settings.admin_phones,
+            admin_telegram_ids=settings.admin_telegram_ids,
         )
         admin_list = await users_svc.admins(s)
         relink_cards: list[tuple[int, str, str]] = []
@@ -138,7 +140,29 @@ async def on_contact(
                         "new_tg": db_user.telegram_id,
                     },
                 )
-                relink_cards.append((adm.telegram_id, key, profile.display_name))
+                relink_cards.append(
+                    (
+                        adm.telegram_id,
+                        key,
+                        t.relink_request(profile.display_name, mask_phone(db_user.phone)),
+                    )
+                )
+        if result.customer_conflict_id is not None:
+            customer = required(await s.get(Customer, result.customer_conflict_id), "customer")
+            for adm in admin_list:
+                key = await pending.create(
+                    s,
+                    user_id=adm.id,
+                    action="move_customer",
+                    payload={"customer_id": customer.id, "new_user_id": db_user.id},
+                )
+                relink_cards.append(
+                    (
+                        adm.telegram_id,
+                        key,
+                        t.customer_move_request(customer.name, mask_phone(db_user.phone)),
+                    )
+                )
         phone_masked = mask_phone(db_user.phone)
     await state.clear()
     log.info(
@@ -152,13 +176,15 @@ async def on_contact(
         text = t.registered_staff(result.display_name)
     elif result.staff_relink_profile_id is not None:
         text = t.STAFF_RELINK_WAIT
+    elif result.customer_conflict_id is not None:
+        text = t.registered_customer(result.display_name) + "\n\n" + t.ACCOUNT_CHECKING
     else:
         text = t.registered_customer(result.display_name)
     await message.answer(text, reply_markup=kb.menu_for(role))
 
     # Adminlarga xabarlar
-    for tg_id, key, staff_name in relink_cards:
-        await _safe_send(bot, tg_id, t.relink_request(staff_name, phone_masked), kb.confirm(key))
+    for tg_id, key, card_text in relink_cards:
+        await _safe_send(bot, tg_id, card_text, kb.confirm(key))
     if (
         result.previous_holder_role in (Role.STAFF, Role.ADMIN)
         and result.staff_relink_profile_id is None
@@ -167,7 +193,7 @@ async def on_contact(
             await _safe_send(
                 bot,
                 adm.telegram_id,
-                t.phone_moved_alert(str(result.previous_holder_role), phone_masked),
+                t.phone_moved_alert(result.previous_holder_role.value, phone_masked),
             )
 
 

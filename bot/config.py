@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     postgres_db: str = "nargiza"
     postgres_host: str = "postgres"
     postgres_port: int = 5432
+    # Bot shu cheklangan rol bilan ulanadi (migratsiya va backup — egasi roli bilan)
+    postgres_app_user: str = "nargiza_app"
+    postgres_app_password: SecretStr
 
     # AI
     ai_provider: AIProviderName = AIProviderName.GEMINI
@@ -80,7 +83,7 @@ class Settings(BaseSettings):
             return frozenset(normalize_phone(p) for p in value.split(",") if p.strip())
         return value
 
-    @field_validator("bot_token", "postgres_password")
+    @field_validator("bot_token", "postgres_password", "postgres_app_password")
     @classmethod
     def _not_empty(cls, value: SecretStr) -> SecretStr:
         if not value.get_secret_value().strip():
@@ -101,6 +104,18 @@ class Settings(BaseSettings):
     @property
     def tz(self) -> ZoneInfo:
         return ZoneInfo(self.timezone)
+
+    @property
+    def app_database_url(self) -> URL:
+        """Bot uchun: cheklangan rol (DELETE, trigger'ni o'chirish, audit_log'ga yozish yo'q)."""
+        return URL.create(
+            drivername="postgresql+asyncpg",
+            username=self.postgres_app_user,
+            password=self.postgres_app_password.get_secret_value(),
+            host=self.postgres_host,
+            port=self.postgres_port,
+            database=self.postgres_db,
+        )
 
     @property
     def database_url(self) -> URL:

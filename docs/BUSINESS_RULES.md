@@ -66,6 +66,7 @@
 - **BR-045** Bir nechta mos mijoz bo'lsa — ro'yxat: ism + izoh, to'liq telefon (faqat xodimlarga), joriy qarz (bo'lim bilan), oxirgi xarid va sanasi. Tanlash: tugma [1][2][3] yoki matn/ovoz ("birinchisi", "Shahlo opaning qizi", "45 67 dagisi"). 5 tadan ko'p bo'lsa — [Yana ko'rsatish] yoki telefon oxirini so'rash. [➕ Yangi mijoz] doim bor.
 - **BR-046** Mijozni xodim o'chira oladi. Qarzi bo'lsa — avval ogohlantiradi va qarzni yopishni taklif qiladi. O'chirish = soft delete; admin qaytara oladi. ❓ Q-8: qarzi bor mijozni qarz yopilmasdan o'chirishga ruxsatmi?
 - **BR-047** ✅ Ro'yxatdan o'tgan har bir odam mijoz bo'ladi. Telefoni mavjud (o'chirilmagan) mijoz yozuviga mos kelsa — o'sha yozuvga bog'lanadi va qarzlarini ko'radi; mos kelmasa — yangi mijoz yozuvi yaratiladi. "💰 Mening qarzim" qarz bo'lmasa: "Sizda qarz yo'q". Bog'lanishda xodimlarga alohida xabar yuborilmaydi (yangi mijozlar soni 20:00 hisobotida).
+  💡 Istisno (xavfsizlik): daftardagi mijoz yozuvi allaqachon **boshqa** Telegram akkauntga bog'langan bo'lsa (raqam boshqa odamga o'tgan bo'lishi mumkin) — avtomatik ko'chirilmaydi, adminga [✅ Tasdiqlash] so'rovi boradi; tasdiqlanguncha "Ma'lumotlaringiz tekshirilmoqda".
 
 ## 5. Qarz daftari
 
@@ -108,6 +109,7 @@
 - **BR-081** Kartada: eski tovar, yangi tovar, farq, qarz/savdo "oldin → keyin".
 - **BR-082** Qarzga olingan tovar almashtirilsa — qarz farqqa qarab o'zgaradi (💡 tuzatish yozuvi bilan; asl qarz o'zgartirilmaydi. Tuzatishlar jadvali — 1-bosqichda architect bilan).
 - **BR-083** Naqd savdo almashtirilsa — farqni mijoz to'laydimi yoki unga qaytariladimi — bot so'raydi.
+- **BR-077** 💡 Summa chegaralari: 10 000 so'mdan kam yoki 1 000 000 000 so'mdan ko'p summa — bot so'raydi (xato aytilgan bo'lishi ehtimoli). "1.500 mln" (ajratgichmi yoki o'nlik?), "350-400 ming" (oraliq), "500 ming 450" — bot so'raydi.
 - **BR-076** ✅ Birliksiz kichik son (< 1000, masalan "350") — ming deb olinadi (350 000 so'm), kartada aniq ko'rinadi. 1000–9999 oralig'idagi birliksiz son ("1500") — bot so'raydi.
 - **BR-084** Faqat qaytarish: qarzga olingan bo'lsa — qarzdan ayiriladi; naqd bo'lsa — savdo bekor qilinadi (qaytarish yozuvi). Ombor ko'payadi.
   ❓ Q-11: qarzning bir qismi allaqachon to'langan bo'lsa va tovar qaytarilsa (masalan qarz 300 000, 200 000 to'langan, 300 000 lik tovar qaytdi) — mijozga 100 000 naqd qaytariladimi?

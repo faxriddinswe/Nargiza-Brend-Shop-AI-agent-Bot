@@ -25,7 +25,13 @@
 
 Keyinroq (1-bosqichda) BotFather'da: tavsif (`/setdescription`), rasm (`/setuserpic`), buyruqlar (`/setcommands`) — matnlarini tayyorlab beraman.
 
-## 2. Telegram ID'ingizni bilish (admin uchun)
+## 2. Admin raqami (BR-013)
+
+`.env` dagi `ADMIN_PHONES=` ga o'z raqamingizni yozing: `ADMIN_PHONES=+998901234567`.
+Botda /start → ro'yxatdan o'tish → "📱 Raqamni ulashish" — bot sizni admin deb taniydi.
+Telegram ID'ni bilish shart emas (quyidagi — zaxira yo'l).
+
+## 2a. Telegram ID'ingizni bilish (ixtiyoriy, zaxira yo'l)
 
 Uchinchi tomon botlarisiz, rasmiy Bot API orqali:
 
@@ -50,9 +56,30 @@ Uchinchi tomon botlarisiz, rasmiy Bot API orqali:
 
 ## 5. Server (Azure for Students, keyin Contabo) — 10-bosqich
 
-## 6. age shifr kaliti — 1-bosqich
+## 6. age shifr kaliti (backup'lar uchun) — HOZIR KERAK
 
-- Yaratish, parol menejeri + qog'ozda saqlash, tiklashni sinash.
+**G'oya:** backup ochiq kalit (`age1...`) bilan shifrlanadi — u serverda turadi va hech narsani ocha olmaydi.
+Ochish faqat yopiq kalit (`AGE-SECRET-KEY-1...`) bilan mumkin — u **hech qachon serverda turmaydi**.
+Server buzib kirilsa ham backup'lar o'qilmaydi. Lekin yopiq kalitni yo'qotsangiz — backup'lar ham yo'qoladi.
+
+1. O'z kompyuteringizda `age` ni o'rnating: `sudo apt install age`
+2. Kalit yarating (fayl faqat sizga o'qiladigan bo'lsin):
+   ```bash
+   umask 077 && age-keygen -o ~/nargiza-backup-key.txt
+   ```
+   Ekranda `Public key: age1...` chiqadi.
+3. **Ochiq kalitni** (`age1...`) `.env` dagi `BACKUP_AGE_RECIPIENT=` ga yozing, so'ng
+   `docker compose up -d backup`. (Hozir u yerda Claude qo'ygan **TEST** kaliti turibdi — almashtiring.)
+4. **Yopiq kalitni ikki joyga saqlang:**
+   - Parol menejeri (Bitwarden, 1Password, KeePassXC): yangi "Secure note" → nomi "Nargiza Brend backup kaliti" →
+     `~/nargiza-backup-key.txt` ning to'liq mazmuni.
+   - Qog'oz: `AGE-SECRET-KEY-1...` qatorini chop eting (yoki katta harflar bilan aniq ko'chiring; kalitda
+     `O`, `I`, `B` harflari va boshidagi `-1` dan keyin `1` raqami uchramaydi — shubhali belgi `0` bo'ladi).
+     Konvertga solib, uyda xavfsiz joyda (hujjatlar bilan) saqlang. Ikkinchi nusxa — ishonchli oila a'zosida.
+     **Qog'ozdagi nusxadan** qayta yozib, 5-qadamdagi tiklash testini o'tkazing — shunda qog'oz to'g'riligi isbotlanadi.
+5. Tiklashni sinang (RUNBOOK.md 5-bo'lim) — kalit haqiqatan ishlashiga ishonch hosil qiling.
+6. Sinovdan keyin kompyuterdagi faylni o'chiring: `shred -u ~/nargiza-backup-key.txt`
+   (kalit endi faqat parol menejeri va qog'ozda).
 
 ## 7. Google Drive backup (ixtiyoriy) — 9-bosqich
 

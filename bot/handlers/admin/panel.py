@@ -49,7 +49,7 @@ class ShopMedia(StatesGroup):
 
 # ------------------------------------------------------------------ panel
 @router.message(Command("admin"))
-@router.message(F.text == t.BTN_ADMIN)
+@router.message(F.text == t.BTN_STAFF_MORE)  # adminda "⚙️ Boshqa" → admin paneli
 async def panel(message: Message, state: FSMContext) -> None:
     await state.clear()
     await message.answer(t.ADMIN_PANEL, reply_markup=kb.admin_panel())
@@ -171,13 +171,8 @@ async def staff_action(cb: CallbackQuery, callback_data: kb.AdminCb, user: User,
     async with uow(sm, actor_id=user.id) as s:
         view = await staff_svc.get_staff(s, callback_data.staff_id)
         key = await pending.create(s, user_id=user.id, action=action, payload={"staff_id": view.id})
-    label = {
-        "block_staff": t.BTN_BLOCK,
-        "unblock_staff": t.BTN_UNBLOCK,
-        "remove_staff": t.BTN_REMOVE_STAFF,
-    }[action]
     await cb.message.answer(
-        t.confirm_staff_action(label, view.display_name), reply_markup=kb.confirm(key)
+        t.confirm_staff_action(action, view.display_name), reply_markup=kb.confirm(key)
     )
 
 
@@ -257,6 +252,14 @@ async def _execute(
         return t.RELINK_APPROVED, [
             (int(payload["new_tg"]), t.relink_approved_for_staff(view.display_name))
         ]
+    if action == "move_customer":
+        try:
+            await users_svc.move_customer_link(
+                s, actor, int(payload["customer_id"]), int(payload["new_user_id"])
+            )
+        except (PermissionError, LookupError) as exc:
+            raise staff_svc.StaffError("mijoz ko'chirilmadi") from exc
+        return t.CUSTOMER_MOVED, []
     raise pending.PendingNotFoundError(action)
 
 

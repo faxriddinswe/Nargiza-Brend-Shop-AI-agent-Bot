@@ -1,0 +1,6 @@
+# Asia/Tashkent vaqti bilan (TZ konteynerda o'rnatilgan). master 9.2 jadvali.
+# daq soat kun oy hafta_kuni
+5    *    *   *  *   /usr/local/bin/backup.sh hourly  >/proc/1/fd/1 2>&1
+0    3    *   *  *   /usr/local/bin/backup.sh daily   >/proc/1/fd/1 2>&1
+30   3    *   *  0   /usr/local/bin/backup.sh weekly  >/proc/1/fd/1 2>&1
+0    4    1   *  *   /usr/local/bin/backup.sh monthly >/proc/1/fd/1 2>&1

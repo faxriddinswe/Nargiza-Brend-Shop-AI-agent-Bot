@@ -31,7 +31,7 @@ def normalize_phone(raw: str) -> str:
         return f"+{UZ_CODE}{digits}"
     if len(digits) == 12 and digits.startswith(UZ_CODE):
         return f"+{digits}"
-    raise InvalidPhoneError(raw)
+    raise InvalidPhoneError("telefon raqami noto'g'ri")  # xom raqam xato matniga qo'yilmaydi (log)
 
 
 def normalize_contact_phone(raw: str) -> str:
@@ -45,7 +45,7 @@ def normalize_contact_phone(raw: str) -> str:
         return f"+{digits}"
     if 7 <= len(digits) <= 15:
         return f"+{digits}"
-    raise InvalidPhoneError(raw)
+    raise InvalidPhoneError("telefon raqami noto'g'ri")  # xom raqam xato matniga qo'yilmaydi (log)
 
 
 def format_phone(phone: str) -> str:

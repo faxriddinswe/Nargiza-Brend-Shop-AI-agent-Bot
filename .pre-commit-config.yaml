@@ -29,7 +29,7 @@ repos:
         # grep topsa 0 qaytaradi — shuning uchun natijani teskari qilamiz:
         # kalit topilsa hook yiqiladi va fayl nomini ko'rsatadi.
         # Naqshlar: SSH/PEM yopiq kalit, age yopiq kaliti, Telegram bot tokeni, Google API kaliti.
-        entry: bash -c '! grep -lE "(BEGIN [A-Z ]*PRIVATE KEY|AGE-SECRET-KEY-1|[0-9]{8,10}:AA[A-Za-z0-9_-]{30,}|AIza[0-9A-Za-z_-]{35})" "$@"' --
+        entry: bash -c '! grep -lE "(BEGIN [A-Z ]*PRIVATE KEY|AGE-SECRET-KEY-1[0-9A-Z]{50,}|[0-9]{8,10}:AA[A-Za-z0-9_-]{30,}|AIza[0-9A-Za-z_-]{35})" "$@"' --
         language: system
         types: [text]
         exclude: '^\.pre-commit-config\.yaml$'

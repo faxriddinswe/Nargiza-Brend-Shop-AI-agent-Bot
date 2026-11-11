@@ -118,6 +118,8 @@ async def set_blocked(session: AsyncSession, actor: User, staff_id: int, blocked
     if user.id == actor.id:
         raise StaffError("o'zingizni bloklay olmaysiz")
     user.is_blocked = blocked
+    # Profil ham nofaol: bloklangan xodim yangi akkaunt orqali ham qayta ulana olmaydi (BR-012a)
+    profile.is_active = not blocked
     await session.flush()
 
 
@@ -127,6 +129,8 @@ async def approve_relink(
     """BR-012a: xodim profilini yangi akkauntga o'tkazish (admin tasdig'i bilan)."""
     _require_admin(actor)
     profile = await _profile(session, staff_id)
+    if not profile.is_active:
+        raise StaffError("xodim bloklangan — avval blokdan chiqaring")
     new_user = await session.get(User, new_user_id)
     if new_user is None or new_user.phone != profile.phone:
         raise StaffError("raqam endi mos emas")

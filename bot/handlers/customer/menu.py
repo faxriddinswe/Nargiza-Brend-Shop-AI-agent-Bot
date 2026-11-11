@@ -20,7 +20,13 @@ router.message.filter(RegisteredFilter())
 
 
 @router.message(F.text == t.BTN_MY_DEBT)
-async def my_debt(message: Message, user: User) -> None:
+async def my_debt(message: Message, user: User, sm: async_sessionmaker[AsyncSession]) -> None:
+    async with read_session(sm) as s:
+        customer = await users_svc.customer_of_user(s, user.id)
+    if customer is None:
+        # Mijoz yozuvi hali ulanmagan (masalan, admin tasdig'ini kutmoqda)
+        await message.answer(t.ACCOUNT_CHECKING)
+        return
     # BR-155: qarz jadvallari 2-bosqichda. Hozircha hech kimda qarz yo'q — bu to'g'ri javob.
     await message.answer(t.NO_DEBT)
 

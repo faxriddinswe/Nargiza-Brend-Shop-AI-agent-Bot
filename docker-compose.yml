@@ -35,5 +35,30 @@ services:
       postgres:
         condition: service_healthy
 
+  backup:
+    build:
+      context: .
+      dockerfile: Dockerfile.backup
+    restart: unless-stopped
+    # Faqat kerakli o'zgaruvchilar (butun .env emas)
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER:-nargiza_app}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      BACKUP_AGE_RECIPIENT: ${BACKUP_AGE_RECIPIENT:-}
+      BACKUP_DIR: /backups
+      BOT_TOKEN: ${BOT_TOKEN}
+      ADMIN_TELEGRAM_IDS: ${ADMIN_TELEGRAM_IDS:-}
+    volumes:
+      # DB volume'dan ALOHIDA joy (host diskidagi papka)
+      - ./backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   pgdata:

@@ -24,6 +24,8 @@ from bot.db.session import make_engine, make_sessionmaker
 ROOT = Path(__file__).resolve().parents[2]
 PG_IMAGE = "postgres:18.6-alpine"
 TEMPLATE_DB = "nb_template"
+APP_USER = "nargiza_app"
+APP_PASSWORD = "test-only-app-password"
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
@@ -102,6 +104,7 @@ def _create_template(server: PgServer) -> None:
     cfg.set_main_option("script_location", str(ROOT / "migrations"))
     cfg.attributes["db_url"] = server.url(TEMPLATE_DB)
     cfg.attributes["configure_logger"] = False
+    cfg.attributes["app_role"] = (APP_USER, APP_PASSWORD)
     command.upgrade(cfg, "head")
 
 
@@ -129,3 +132,25 @@ async def engine(pg_server: PgServer) -> AsyncIterator[AsyncEngine]:
 @pytest.fixture
 def sm(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
     return make_sessionmaker(engine)
+
+
+@pytest.fixture
+async def app_sm(
+    engine: AsyncEngine, pg_server: PgServer
+) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+    """Bot ishlatadigan cheklangan rol bilan ulanish (shu testning bazasiga)."""
+    db = engine.url.database
+    assert db is not None
+    url = URL.create(
+        "postgresql+asyncpg",
+        username=APP_USER,
+        password=APP_PASSWORD,
+        host=pg_server.host,
+        port=pg_server.port,
+        database=db,
+    )
+    eng = make_engine(url)
+    try:
+        yield make_sessionmaker(eng)
+    finally:
+        await eng.dispose()

@@ -99,8 +99,7 @@ def staff_menu(role: Role) -> ReplyKeyboardMarkup:
         [t.BTN_STAFF_SEARCH, t.BTN_STAFF_REPORT, t.BTN_STAFF_STOCK],
         [t.BTN_STAFF_BROADCAST, t.BTN_STAFF_MORE],
     ]
-    if role == Role.ADMIN:
-        rows.append([t.BTN_ADMIN])
+    # Admin paneli "⚙️ Boshqa" orqali (UX: bir klaviaturada ko'pi bilan 8 tugma)
     return _reply(rows)
 
 

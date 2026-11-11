@@ -236,3 +236,95 @@ async def test_section_owner_ids(sm: SM) -> None:
     async with read_session(sm) as s:
         assert await staff_svc.section_owner_telegram_ids(s, "lingerie") == [240]
         assert await staff_svc.section_owner_telegram_ids(s, "shop") == [241]
+
+
+# ---------------------------------------------------------------- security review tuzatishlari
+async def test_blocked_staff_cannot_come_back_via_new_account(sm: SM) -> None:
+    """BR-015 + BR-012a: bloklangan xodim yangi akkaunt bilan relink so'rovi ham olmaydi."""
+    admin = await _admin(sm)
+    async with uow(sm, actor_id=admin.id) as s:
+        view = await staff_svc.add_staff(
+            s, admin, raw_phone="+998900000030", display_name="Z opa", section_codes=["shop"]
+        )
+    await _register(sm, 300, "+998900000030")
+    async with uow(sm, actor_id=admin.id) as s:
+        await staff_svc.set_blocked(s, admin, view.id, True)
+    r = await _register(sm, 301, "+998900000030")  # o'g'irlangan SIM bilan yangi akkaunt
+    assert r.role == Role.CUSTOMER
+    assert r.staff_relink_profile_id is None
+    new_user = await _user(sm, 301)
+    with pytest.raises(staff_svc.StaffError):
+        async with uow(sm, actor_id=admin.id) as s:
+            await staff_svc.approve_relink(s, admin, view.id, new_user.id)
+
+
+async def test_customer_not_moved_to_new_owner_of_phone_without_admin(sm: SM) -> None:
+    """Raqam boshqa odamga o'tsa — mijozning ma'lumoti avtomatik ochilmaydi."""
+    admin = await _admin(sm)
+    first = await _register(sm, 400, "+998900000040")
+    second = await _register(sm, 401, "+998900000040")  # raqam yangi egada
+    assert second.customer_conflict_id == first.customer_id
+    assert second.customer_id is None
+    new_user = await _user(sm, 401)
+    async with read_session(sm) as s:
+        assert await users_svc.customer_of_user(s, new_user.id) is None
+        # dublikat mijoz yozuvi ham yaratilmagan
+        rows = (await s.scalars(select(Customer).where(Customer.phone == "+998900000040"))).all()
+        assert len(rows) == 1
+    # admin tasdiqlasa — ko'chadi
+    async with uow(sm, actor_id=admin.id) as s:
+        await users_svc.move_customer_link(s, admin, first.customer_id or 0, new_user.id)
+    async with read_session(sm) as s:
+        c = await users_svc.customer_of_user(s, new_user.id)
+        assert c is not None and c.id == first.customer_id
+
+
+async def test_non_admin_cannot_move_customer(sm: SM) -> None:
+    first = await _register(sm, 410, "+998900000041")
+    await _register(sm, 411, "+998900000041")
+    intruder = await _user(sm, 411)
+    with pytest.raises(PermissionError):
+        async with uow(sm, actor_id=intruder.id) as s:
+            await users_svc.move_customer_link(s, intruder, first.customer_id or 0, intruder.id)
+
+
+async def test_staff_relink_does_not_create_customer_record(sm: SM) -> None:
+    admin = await _admin(sm)
+    async with uow(sm, actor_id=admin.id) as s:
+        await staff_svc.add_staff(
+            s, admin, raw_phone="+998900000042", display_name="W opa", section_codes=[]
+        )
+    await _register(sm, 420, "+998900000042")
+    r = await _register(sm, 421, "+998900000042")
+    assert r.staff_relink_profile_id is not None
+    async with read_session(sm) as s:
+        assert (
+            await s.scalars(select(Customer).where(Customer.phone == "+998900000042"))
+        ).first() is None
+
+
+async def test_admin_by_telegram_id_keeps_role_when_phone_moves(sm: SM) -> None:
+    async with uow(sm, actor_kind="system") as s:
+        u = await users_svc.get_or_create_user(s, 500, "A")
+        await users_svc.register(
+            s,
+            u,
+            raw_phone="+998900000050",
+            name="A",
+            address_form=AddressForm.AKA,
+            admin_phones=set(),
+            admin_telegram_ids={500},
+        )
+        await users_svc.sync_admins(s, admin_phones=set(), admin_telegram_ids={500})
+    async with uow(sm, actor_kind="system") as s:
+        u2 = await users_svc.get_or_create_user(s, 501, "B")
+        await users_svc.register(
+            s,
+            u2,
+            raw_phone="+998900000050",
+            name="B",
+            address_form=AddressForm.AKA,
+            admin_phones=set(),
+            admin_telegram_ids={500},
+        )
+    assert (await _user(sm, 500)).role == Role.ADMIN

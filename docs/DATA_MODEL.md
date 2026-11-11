@@ -1,6 +1,8 @@
 # Ma'lumotlar modeli
 
-> Holat: 1-bosqich dizayni (architect ko'rib chiqishi kerak).
+> Holat: 1-bosqich jadvallari amalga oshirildi (migratsiya `0001`). Architect tavsiyalari qabul qilindi:
+> audit — Postgres trigger; sinonimlar alohida jadval; `pending_actions` → `pending_actions`; telefon CHECK.
+> Quyidagi matnning ayrim joylari dastlabki reja — haqiqiy sxema: `bot/db/models.py` va migratsiya.
 > 1-bosqichda **poydevor jadvallari** yaratiladi. Qarz/to'lov jadvallari 2-bosqichda, savdo/ombor 5-bosqichda,
 > e'lon/eslatma 7-bosqichda — har biri o'z Alembic migratsiyasi bilan, qoidalari tasdiqlangandan keyin.
 
@@ -11,9 +13,10 @@
 - Soft delete: `deleted_at timestamptz NULL`, `deleted_by → users.id`. `DELETE` ishlatilmaydi.
 - Har bir biznes jadvalda: `created_at`, `created_by`, `updated_at`.
 - Enum'lar Postgres'da `text + CHECK` sifatida (yangi qiymat qo'shish migratsiyada oson).
-- Audit: `Audited` mixin'li modellarning har bir insert/update/soft-delete'i shu tranzaksiya ichida
-  `audit_log` ga avtomatik yoziladi (SQLAlchemy `before_flush` hodisasi). Kim qilgani — `session.info["actor_id"]`.
-  Aktor ko'rsatilmagan yozuv flush'da xato beradi (unutib bo'lmaydi).
+- Audit: Postgres `audit_trigger()` (SECURITY DEFINER) har bir insert/update/soft-delete/restore ni yozadi.
+  Kim qilgani — tranzaksiya boshida `set_config('app.actor_id'/'app.actor_kind', ..., true)` (`bot/db/session.py: uow`).
+  Aktorsiz yozuv rad etiladi. ORM'dan tashqari yo'llar (bulk, psql) ham audit'dan o'tadi.
+- DB rollari: egasi (migratsiya, backup) va `nargiza_app` (bot): SELECT/INSERT/UPDATE, DELETE yo'q, audit_log faqat o'qish.
 
 ## 1-bosqich jadvallari
 
@@ -67,11 +70,13 @@ Rol `users.role` da saqlanadi (yagona manba); `staff_profiles` — xodim haqidag
 | id | bigint PK | |
 | section_id | FK sections NOT NULL | |
 | name | text NOT NULL | "ko'ylak" |
-| synonyms | text[] NOT NULL | lotin + kirill, kichik harfda |
 | low_stock_threshold | int NULL CHECK ≥ 0 | |
 | is_active | bool | |
 
-Unique: `lower(name)`. Seed — BUSINESS_RULES 3.1 (pijama, xalat → shop).
+Unique: `lower(name)`, `(id, section_id)` (2-bosqichda kompozit FK uchun). Seed — BUSINESS_RULES 3.1 (pijama, xalat → shop).
+
+### category_synonyms
+`id`, `category_id → categories`, `synonym` UNIQUE (`search_key()` ko'rinishida). Bitta so'z faqat bitta turga tegishli.
 
 ### customers — mijozlar (daftar)
 | Ustun | Tur | Izoh |
@@ -100,14 +105,15 @@ Index: `pg_trgm` GIN `search_name` (fuzzy qidiruv uchun, 2-bosqichda ishlatiladi
 | actor_id | FK users NULL (NULL = tizim, masalan scheduler) |
 | action | text CHECK in (insert, update, soft_delete, restore) |
 | table_name | text |
-| record_id | bigint |
+| actor_kind | text CHECK in (user, system, migration) |
+| record_id | text (kompozit kalit `1:2`) |
 | old | jsonb NULL |
 | new | jsonb NULL |
 | at | timestamptz |
 
 Faqat qo'shiladi; ilova DB foydalanuvchisiga `audit_log` uchun UPDATE/DELETE huquqi berilmaydi (9-bosqichda).
 
-### idempotency_keys
+### pending_actions
 | Ustun | Tur | Izoh |
 |---|---|---|
 | key | text PK | tasdiqlash kartasi yaratilganda beriladi |

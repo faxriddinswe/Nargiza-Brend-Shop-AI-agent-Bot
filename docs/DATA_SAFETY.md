@@ -1,7 +1,7 @@
 # Ma'lumot xavfsizligi
 
 > Qarz yoki savdo yozuvi yo'qolsa — oila pul yo'qotadi. Manba: master prompt 9-bo'lim.
-> Holat: reja. Amalga oshirish: 1-bosqich (backup/restore), 9-bosqich (yaxlitlik, monitoring).
+> Holat: 1-qism (yozish darajasi, backup, restore) ishlaydi; yaxlitlik va monitoring — 9-bosqich.
 
 ## 1. Yozish darajasida
 - Har bir biznes amal — bitta tranzaksiya.
@@ -23,7 +23,19 @@
 server diski (DB volume'dan alohida) + adminning Telegram'i (kunlik) + Google Drive (ixtiyoriy, ❓ Q-24).
 
 Har kuni adminga: "✅ Backup OK: N qarz, M savdo, hajmi X MB". Backup yo'q yoki hajm keskin kamaygan — ogohlantirish.
-Haftalik avtomatik tiklash testi.
+Haftalik tiklash testi — `scripts/restore_test.sh` (har jadval soni backup paytidagi `.counts` bilan solishtiriladi).
+
+### Amalga oshirish (1-bosqich)
+- Alohida `backup` konteyneri (postgres:18.6-alpine + age + crond): bot to'xtasa ham ishlaydi; `pg_dump` server versiyasi bilan bir xil.
+- `pg_dump -Fc | age -r <ochiq kalit>` — diskka ochiq dump hech qachon yozilmaydi. Fayllar `600`, egasi root.
+- Jadval: soatlik (:05), kunlik 03:00, haftalik yakshanba 03:30, oylik 1-kuni 04:00 (Toshkent).
+- `restore.sh` avval vaqtinchalik bazaga tiklaydi; asosiy bazani almashtirishda eski baza o'chirilmaydi (`_old_<vaqt>`).
+- Sinaldi (2026-11-11): backup → restore, 10 jadval soni mos; noto'g'ri kalit rad etildi; asosiy bazani almashtirish.
+
+### ⚠️ Ochiq masala: haftalik AVTOMATIK tiklash testi
+Tiklash uchun yopiq kalit kerak, lekin qoida bo'yicha yopiq kalit serverda turmaydi. Bu ikki talab ziddiyatli.
+Hozircha: test qo'lda (admin kalitni vaqtincha qo'yib, RUNBOOK 5). 9-bosqichda variantlar ko'rib chiqiladi
+(masalan, faqat test uchun alohida kalit juftligi bilan qo'shimcha shifrlash).
 
 ## 3. Yaxlitlik tekshiruvi (har kecha)
 Manfiy qarz, ortiqcha to'lov, dublikat to'lov, manfiy ombor, bog'lanmagan yozuvlar → adminga hisobot.

@@ -56,8 +56,15 @@ def _month_period(year: int, month: int) -> Period:
     )
 
 
+class _BadYearError(ValueError):
+    pass
+
+
 def _resolve_month_year(month: int, today: date, explicit_year: int | None) -> int:
     if explicit_year is not None:
+        # Bot 2026 da ishga tushdi; juda eski yoki kelajakdagi yil — xato aytilgan
+        if not 2020 <= explicit_year <= today.year:
+            raise _BadYearError(explicit_year)
         return explicit_year
     return today.year if month <= today.month else today.year - 1
 
@@ -71,10 +78,19 @@ _MONTH_RE = re.compile(r"^([a-z]+)(?:\s+oyi)?(?:\s+(\d{4}))?$")
 
 def parse_period(text: str, today: date) -> Period | None:
     """Matndan davr. Tushunilmasa `None` (bot so'raydi — taxmin qilmaydi)."""
+    try:
+        return _parse_period(text, today)
+    except _BadYearError:
+        return None
+
+
+def _parse_period(text: str, today: date) -> Period | None:
     t = search_key(text)
     t = re.sub(r"\b(da|dagi|uchun|oydagi)\b", "", t).strip()
     t = re.sub(r"(\d)-?(chi|inchi|i)\b", r"\1", t)  # "15-chi" → "15"
     t = re.sub(r"(\d)-([a-z])", r"\1 \2", t)  # "15-noyabr" → "15 noyabr"
+    # "mayda", "martdagi" → "may", "mart"
+    t = re.sub(r"\b([a-z]+?)(da|dagi)\b", lambda m: m[1] if m[1] in MONTHS else m[0], t)
     t = re.sub(r"\s+", " ", t)
 
     if t == "bugun":

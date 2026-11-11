@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from bot.config import Settings, get_settings
 from bot.db.session import make_engine, make_sessionmaker, uow
 from bot.handlers.admin import panel as admin_panel
-from bot.handlers.common import start
+from bot.handlers.common import fallback, start
 from bot.handlers.customer import menu as customer_menu
 from bot.handlers.staff import menu as staff_menu
 from bot.logging_setup import setup_logging
@@ -67,7 +67,9 @@ def build_dispatcher(settings: Settings, engine: AsyncEngine) -> Dispatcher:
     dp.errors.register(on_error)
 
     # Tartib muhim: admin → start (FSM) → xodim → mijoz
-    dp.include_routers(admin_panel.router, start.router, staff_menu.router, customer_menu.router)
+    dp.include_routers(
+        admin_panel.router, start.router, staff_menu.router, customer_menu.router, fallback.router
+    )
     return dp
 
 
@@ -80,9 +82,9 @@ async def main() -> None:
         admin_phones=len(settings.admin_phones),
         admin_ids=len(settings.admin_telegram_ids),
     )
-    await check_database(settings.database_url)
+    await check_database(settings.app_database_url)
 
-    engine = make_engine(settings.database_url)
+    engine = make_engine(settings.app_database_url)
     dp = build_dispatcher(settings, engine)
 
     async with uow(dp["sm"], actor_kind="system") as s:

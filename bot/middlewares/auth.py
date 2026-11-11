@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from bot.db.models import Role, User
 from bot.db.session import uow
 from bot.services import users as users_svc
+from bot.services.settings import DEFAULTS
 from bot.texts import uz_latn as t
 
 
@@ -37,9 +38,9 @@ class UserMiddleware(BaseMiddleware):
 
         if user.is_blocked:
             if isinstance(event, Message):
-                await event.answer(t.BLOCKED)
+                await event.answer(t.blocked(DEFAULTS["shop.phone"]))
             elif isinstance(event, CallbackQuery):
-                await event.answer(t.BLOCKED, show_alert=True)
+                await event.answer(t.blocked(DEFAULTS["shop.phone"]), show_alert=True)
             return None
 
         data["user"] = user

@@ -11,7 +11,12 @@ from bot.services.settings import ShopInfo
 
 # ------------------------------------------------------------------ umumiy
 GENERIC_ERROR: Final = "Kechirasiz, nimadir xato ketdi. Birozdan keyin qayta urinib ko'ring 🙏"
-BLOCKED: Final = "Kechirasiz, akkauntingiz vaqtincha to'xtatilgan. Do'kon bilan bog'laning."
+
+
+def blocked(shop_phone: str) -> str:
+    return f"Kechirasiz, bot siz uchun vaqtincha yopilgan. Do'kon bilan bog'laning: {shop_phone}"
+
+
 CMD_START: Final = "Bosh menyu"
 COMING_SOON: Final = "Bu bo'lim tez orada ishga tushadi 🙂"
 UNKNOWN_INPUT: Final = "Tushunmadim. Iltimos, pastdagi tugmalardan birini tanlang 👇"
@@ -34,9 +39,8 @@ def welcome(shop: ShopInfo) -> str:
 
 
 ASK_NAME: Final = "Ismingiz nima? Pastdagi tugmani bosing yoki ismingizni yozing ✍️"
-NAME_INVALID: Final = "Ismingizni harflar bilan yozib yuboring, iltimos (2–40 ta harf)."
-ASK_ADDRESS_FORM: Final = "Sizga qanday murojaat qilaylik?"
-POINT_DOWN: Final = "👇"
+NAME_INVALID: Final = "Ismingizni harflar bilan yozib yuboring, iltimos. Masalan: Umida"
+ASK_ADDRESS_FORM: Final = "Sizga qanday murojaat qilaylik? 👇"
 BTN_OPA: Final = "Opa"
 BTN_AKA: Final = "Aka"
 ASK_PHONE: Final = (
@@ -45,11 +49,11 @@ ASK_PHONE: Final = (
 )
 BTN_SHARE_PHONE: Final = "📱 Raqamni ulashish"
 PHONE_USE_BUTTON: Final = (
-    "Raqamni yozmang — pastdagi «📱 Raqamni ulashish» tugmasini bosing, iltimos 👇"
+    "Raqamni yozish shart emas — pastdagi «📱 Raqamni ulashish» tugmasini bosing 👇"
 )
 CONTACT_NOT_OWN: Final = (
-    "Bu boshqa odamning raqami bo'lib qoldi. "
-    "Iltimos, o'z raqamingizni «📱 Raqamni ulashish» tugmasi orqali yuboring 👇"
+    "Bu raqam boshqa odamniki ekan. "
+    "O'z raqamingizni «📱 Raqamni ulashish» tugmasi bilan yuboring 👇"
 )
 ALREADY_REGISTERED: Final = "Siz allaqachon ro'yxatdan o'tgansiz ✅"
 
@@ -67,8 +71,8 @@ def registered_admin(display_name: str) -> str:
 
 
 STAFF_RELINK_WAIT: Final = (
-    "Raqamingiz xodim sifatida boshqa akkauntga ulangan. Adminga so'rov yuborildi — "
-    "tasdiqlangach xabar beramiz 🙏"
+    "Raqamingiz boshqa Telegram'da xodim sifatida turibdi. Tasdiqlash uchun so'rov yubordik — "
+    "tasdiqlansa, darhol xabar beramiz 🙏"
 )
 
 # ------------------------------------------------------------------ mijoz menyusi (BR-154)
@@ -83,6 +87,10 @@ BTN_BACK: Final = "⬅️ Orqaga"
 
 MENU_HINT: Final = "Kerakli bo'limni tanlang 👇"
 NO_DEBT: Final = "Sizda qarz yo'q ✅"
+ACCOUNT_CHECKING: Final = (
+    "Ma'lumotlaringiz tekshirilmoqda. Tez orada tayyor bo'ladi 🙏\n"
+    "Savolingiz bo'lsa, do'konga qo'ng'iroq qiling."
+)
 NO_NEWS: Final = "Hozircha yangi e'lonlar yo'q. Yangilik bo'lsa, birinchi bo'lib sizga yozamiz 🌸"
 SETTINGS_TITLE: Final = "⚙️ Sozlamalar"
 ADS_OFF_DONE: Final = (
@@ -122,13 +130,12 @@ BTN_STAFF_MORE: Final = "⚙️ Boshqa"
 STAFF_MENU_HINT: Final = "Asosiy menyu 👇"
 
 # ------------------------------------------------------------------ admin (BR-012, BR-014)
-BTN_ADMIN: Final = "🛠 Admin"
 ADMIN_PANEL: Final = "🛠 Admin paneli"
 BTN_ADMIN_STAFF: Final = "👥 Xodimlar"
 BTN_ADMIN_ADD_STAFF: Final = "➕ Xodim qo'shish"
 BTN_ADMIN_STATS: Final = "📊 Statistika"
 BTN_ADMIN_SHOP_PHOTO: Final = "🖼 Do'kon rasmi"
-BTN_ADMIN_SHOP_LOCATION: Final = "📍 Lokatsiya"
+BTN_ADMIN_SHOP_LOCATION: Final = "📍 Xaritadagi joy"
 
 ADD_STAFF_ASK_PHONE: Final = "Xodimning telefon raqamini yozing.\nMasalan: 90 123 45 67"
 ADD_STAFF_BAD_PHONE: Final = (
@@ -136,15 +143,15 @@ ADD_STAFF_BAD_PHONE: Final = (
 )
 ADD_STAFF_ASK_NAME: Final = "Botda unga qanday murojaat qilinsin?\nMasalan: Nodira opa"
 ADD_STAFF_ASK_SECTIONS: Final = (
-    "Qaysi bo'lim(lar) egasi? Belgilab, «Tayyor» ni bosing.\n"
-    "(Bo'lim egasiga boshqa xodim shu bo'limga yozganda xabar boradi.)"
+    "Bu xodim qaysi bo'limga javobgar? Belgilang va «✅ Tayyor» ni bosing.\n"
+    "Boshqalar shu bo'limga yozsa, unga xabar boradi."
 )
 BTN_DONE: Final = "✅ Tayyor"
 BTN_CONFIRM: Final = "✅ Tasdiqlash"
 BTN_CANCEL: Final = "❌ Bekor qilish"
 CANCELLED: Final = "❌ Bekor qilindi."
-CARD_EXPIRED: Final = "⌛️ Bu karta eskirdi. Iltimos, qaytadan boshlang."
-CARD_NOT_YOURS: Final = "Bu kartani faqat uni ochgan odam tasdiqlay oladi."
+CARD_EXPIRED: Final = "⌛️ Bu so'rovning vaqti o'tdi. Iltimos, qaytadan boshlang."
+CARD_NOT_YOURS: Final = "Buni faqat boshlagan odam tasdiqlay oladi."
 CARD_ALREADY_DONE: Final = "✅ Bu allaqachon saqlangan."
 STAFF_EXISTS: Final = "Bu raqam bilan xodim allaqachon bor."
 SECTION_NAMES: Final = {"shop": "Do'kon", "lingerie": "Ichki kiyim"}
@@ -165,7 +172,7 @@ def staff_added(display_name: str, linked: bool) -> str:
     tail = (
         "U botga allaqachon ulangan — darhol xodim bo'ldi."
         if linked
-        else "U botda /start bosib, raqamini ulashganda avtomatik xodim bo'ladi."
+        else "U botni ochib, «Start» ni bosib, raqamini ulashganda o'zi xodim bo'ladi."
     )
     return f"✅ {display_name} xodim sifatida qo'shildi.\n{tail}"
 
@@ -188,8 +195,15 @@ STAFF_REMOVED: Final = "Xodimlikdan olindi. U endi oddiy mijoz."
 STAFF_NOT_LINKED: Final = "Xodim hali botga ulanmagan."
 
 
-def confirm_staff_action(label: str, name: str) -> str:
-    return f"{label}: {name}?\n\nTasdiqlaysizmi?"
+STAFF_ACTION_QUESTIONS: Final = {
+    "block_staff": "{name}ni bloklaysizmi?",
+    "unblock_staff": "{name}ni blokdan chiqarasizmi?",
+    "remove_staff": "{name}ni xodimlikdan olasizmi?",
+}
+
+
+def confirm_staff_action(action: str, name: str) -> str:
+    return STAFF_ACTION_QUESTIONS[action].format(name=name)
 
 
 def stats(counts: dict[str, int], customers: int, customers_linked: int) -> str:
@@ -204,28 +218,40 @@ def stats(counts: dict[str, int], customers: int, customers_linked: int) -> str:
 
 ASK_SHOP_PHOTO: Final = "Do'kon rasmini yuboring (xush kelibsiz xabarida ko'rinadi)."
 SHOP_PHOTO_SAVED: Final = "✅ Rasm saqlandi."
-ASK_SHOP_LOCATION: Final = "Do'kon lokatsiyasini yuboring: 📎 → Lokatsiya."
-SHOP_LOCATION_SAVED: Final = "✅ Lokatsiya saqlandi."
+ASK_SHOP_LOCATION: Final = "Do'kon joylashuvini yuboring: 📎 → Joylashuv."
+SHOP_LOCATION_SAVED: Final = "✅ Joylashuv saqlandi."
 
 
 def relink_request(staff_name: str, phone_masked: str) -> str:
     return (
-        f"⚠️ {staff_name} raqami ({phone_masked}) yangi Telegram akkauntdan ulashildi.\n"
-        "Eski akkaunt xodimlikdan vaqtincha chiqarildi.\n\n"
-        "Yangi akkauntni xodim qilib tasdiqlaysizmi?"
+        f"⚠️ {staff_name} raqami ({phone_masked}) boshqa Telegram'dan ulashildi.\n"
+        "Eski Telegram'dan xodim huquqlari olindi.\n\n"
+        "Yangisini xodim qilib tasdiqlaysizmi?"
     )
 
 
-RELINK_APPROVED: Final = "✅ Tasdiqlandi. Yangi akkaunt endi xodim."
-RELINK_REJECTED: Final = "Rad etildi. Yangi akkaunt oddiy mijoz bo'lib qoladi."
+def customer_move_request(name: str, phone_masked: str) -> str:
+    return (
+        f"⚠️ Mijoz {name} ({phone_masked}) raqami boshqa Telegram'dan ulashildi.\n"
+        "Raqam boshqa odamga o'tgan bo'lishi mumkin. Shu odamga mijozning qarz ma'lumotlarini "
+        "ko'rsataylikmi?\n\nShubha bo'lsa — mijozga qo'ng'iroq qilib tekshiring."
+    )
+
+
+CUSTOMER_MOVED: Final = "✅ Tasdiqlandi. Mijoz ma'lumotlari yangi Telegram'ga ulandi."
+RELINK_APPROVED: Final = "✅ Tasdiqlandi. Endi u yangi Telegram'dan xodim sifatida ishlaydi."
+RELINK_REJECTED: Final = "Rad etildi. Bu Telegram oddiy mijoz bo'lib qoladi."
 
 
 def relink_approved_for_staff(display_name: str) -> str:
-    return f"✅ {display_name}, admin tasdiqladi. Siz xodim sifatida ulandingiz."
+    return f"✅ {display_name}, tasdiqlandi! Siz xodim sifatida ulandingiz."
+
+
+ROLE_NAMES: Final = {"admin": "Admin", "staff": "Xodim", "customer": "Mijoz"}
 
 
 def phone_moved_alert(role: str, phone_masked: str) -> str:
     return (
-        f"⚠️ Diqqat: {role} raqami ({phone_masked}) boshqa Telegram akkauntga o'tdi. "
-        "Eski akkauntdan huquqlar olindi."
+        f"⚠️ Diqqat: {ROLE_NAMES.get(role, role)} raqami ({phone_masked}) boshqa Telegram'ga o'tdi. "
+        "Eski Telegram'dan huquqlar olindi."
     )

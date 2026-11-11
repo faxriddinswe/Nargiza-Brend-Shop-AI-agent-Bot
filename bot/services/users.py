@@ -56,6 +56,8 @@ class RegistrationResult:
     previous_holder_role: Role | None = None
     # BR-012a: xodim raqami yangi akkauntdan — admin tasdig'i kerak
     staff_relink_profile_id: int | None = None
+    # Daftardagi mijoz boshqa akkauntga bog'langan — avtomatik ko'chirilmaydi, admin tasdiqlaydi
+    customer_conflict_id: int | None = None
     notes: list[str] = field(default_factory=list)
 
 
@@ -71,6 +73,7 @@ async def register(
     name: str,
     address_form: AddressForm,
     admin_phones: Collection[str],
+    admin_telegram_ids: Collection[int] = (),
     now: datetime | None = None,
 ) -> RegistrationResult:
     """Kontakt tasdiqlangandan keyin chaqiriladi (handler `verify_own_contact` qilgan bo'lishi shart).
@@ -91,7 +94,7 @@ async def register(
         result.previous_holder_role = Role(holder.role)
         holder.phone = None
         holder.phone_verified_at = None
-        if holder.role != Role.CUSTOMER:
+        if holder.role != Role.CUSTOMER and holder.telegram_id not in admin_telegram_ids:
             holder.role = Role.CUSTOMER
         await session.flush()  # unique(phone) to'qnashmasligi uchun avval bo'shatamiz
         log.warning("phone_moved_between_accounts", phone=mask_phone(phone))
@@ -127,7 +130,8 @@ async def register(
     customer = await session.scalar(
         select(Customer).where(Customer.phone == phone, Customer.deleted_at.is_(None))
     )
-    if customer is None and result.role == Role.CUSTOMER:
+    relink_pending = result.staff_relink_profile_id is not None
+    if customer is None and result.role == Role.CUSTOMER and not relink_pending:
         # Shu akkauntga avval boshqa raqam bilan bog'langan yozuv bo'lsa — uzamiz
         await _unlink_customers_of_user(session, user.id)
         customer = Customer(
@@ -140,10 +144,16 @@ async def register(
         session.add(customer)
         await session.flush()
         result.customer_created = True
-    elif customer is not None and customer.user_id != user.id:
+    elif customer is not None and customer.user_id is None:
+        # BR-047: daftardagi mijoz birinchi marta botga ulanmoqda
         await _unlink_customers_of_user(session, user.id)
         customer.user_id = user.id
         await session.flush()
+    elif customer is not None and customer.user_id != user.id:
+        # Raqam boshqa odamga o'tgan bo'lishi mumkin (operator raqamni qayta sotgan) —
+        # qarz ma'lumoti begona odamga ochilmasin: admin tasdiqlaydi.
+        result.customer_conflict_id = customer.id
+        customer = None
     if customer is not None:
         result.customer_id = customer.id
         if result.role == Role.CUSTOMER:
@@ -160,6 +170,23 @@ async def _unlink_customers_of_user(session: AsyncSession, user_id: int) -> None
         .where(Customer.user_id == user_id, Customer.deleted_at.is_(None))
         .values(user_id=None)
     )
+
+
+async def move_customer_link(
+    session: AsyncSession, actor: User, customer_id: int, new_user_id: int
+) -> None:
+    """Admin tasdig'i bilan: daftardagi mijoz yozuvini yangi akkauntga bog'lash."""
+    if actor.role != Role.ADMIN or actor.is_blocked:
+        raise PermissionError
+    customer = await session.get(Customer, customer_id)
+    new_user = await session.get(User, new_user_id)
+    if customer is None or customer.deleted_at is not None or new_user is None:
+        raise LookupError
+    if new_user.phone != customer.phone:
+        raise LookupError  # raqam o'zgargan — eski so'rov endi yaroqsiz
+    await _unlink_customers_of_user(session, new_user_id)
+    customer.user_id = new_user_id
+    await session.flush()
 
 
 async def customer_of_user(session: AsyncSession, user_id: int) -> Customer | None:

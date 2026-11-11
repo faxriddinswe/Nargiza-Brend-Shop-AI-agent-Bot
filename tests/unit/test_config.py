@@ -15,6 +15,7 @@ def make(**overrides: Any) -> Settings:
     base: dict[str, Any] = {
         "bot_token": "123:fake-token",
         "postgres_password": "fake-password",
+        "postgres_app_password": "fake-app-password-123",
     }
     base.update(overrides)
     return Settings(_env_file=None, **base)

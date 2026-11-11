@@ -29,7 +29,10 @@ ActorKind = Literal["user", "system"]
 
 
 def make_engine(url: URL | str) -> AsyncEngine:
-    return create_async_engine(url, pool_pre_ping=True, pool_size=5, max_overflow=5)
+    # hide_parameters: xato matnlarida (log) SQL parametrlari — telefon, ism — ko'rinmasin
+    return create_async_engine(
+        url, pool_pre_ping=True, pool_size=5, max_overflow=5, hide_parameters=True
+    )
 
 
 def make_sessionmaker(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
