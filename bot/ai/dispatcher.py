@@ -513,6 +513,8 @@ async def _compare(
     fix: dict[str, Any],
     ctx: Context,
 ) -> Outcome:
+    if not args.period_a_text.strip() or not args.period_b_text.strip():
+        return Outcome(question=t.AI_PERIOD_QUESTION)  # never compare "today with today" by default
     a = await _period_or_ask(args.period_a_text, ctx)
     b = await _period_or_ask(args.period_b_text, ctx)
     if isinstance(a, Outcome) or isinstance(b, Outcome):

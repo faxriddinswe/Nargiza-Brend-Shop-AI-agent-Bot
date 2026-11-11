@@ -106,3 +106,21 @@ Ovozli xabar 1,5 daqiqagacha bo'lsin. Bot «hozir tinglay olmayapman» desa, pas
 - Xato bo'lsa: «⚙️ Boshqa» → **🚫 Yozuvni bekor qilish** — savdo, qaytarish, qarz va to'lov hammasi bekor qilinadi. Qaytarilgan tovari bor savdoni bekor qilish uchun avval qaytarishni bekor qiling. Mijozga allaqachon qaytarib berilgan naqd pulni dastur qaytarib ola olmaydi — buni o'zingiz hal qilasiz.
 
 **Ombor:** 📦 **Ombor** tugmasi hamma qoldiqni ko'rsatadi. Qoldiq manfiy bo'lsa bot ogohlantiradi («kirim yozilmagan bo'lishi mumkin»). Boshlang'ich qoldiqni bir marta sanoq bilan kiriting.
+
+
+## 📊 Hisobot va Excel
+
+**📊 Hisobot** tugmasi bugungi hisobotni ko'rsatadi. Boshqa davr uchun yozing yoki ayting:
+
+| Aytasiz | Bot nima qiladi |
+|---|---|
+| «O'tgan oy hisoboti» / «mart» / «1–15 noyabr» | Shu davr hisoboti |
+| «Bu oy o'tgan oydan ko'pmi?» | Ikki davrni solishtiradi (farq va foiz bilan) |
+| «Bugun kim to'ladi?» | To'lovlar ro'yxati va jami |
+| «Qarzdorlarni Excelga ber» / «Hisobotni Excelga ber» / «Ombor Excel» | Excel fayl yuboradi |
+
+- Do'kon va ichki kiyim bo'limlari **alohida** chiqadi, hech qachon qo'shilmaydi.
+- «Kassaga kirdi (sof)» = savdodan tushgan naqd + qarz to'lovlari − mijozga qaytarilgan naqd. Kechilgan qarz va qarzdan ayirilgan qaytarish kassaga kirmaydi.
+- Har kuni **20:00** da hisobot o'zi keladi — kassadagi pulni shu bilan solishtiring. Har oyning 1-kuni o'tgan oy hisoboti keladi.
+- Davr aytilmasa, bot so'raydi (hisobot uchun «bugun» deb olinadi).
+- Excel fayl faqat sizga yuboriladi; uni boshqalarga uzatmang (telefon raqamlari bor).

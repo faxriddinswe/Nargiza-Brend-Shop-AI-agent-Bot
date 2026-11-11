@@ -262,8 +262,8 @@ class Comparison:
     def turnover(self, code: str) -> Delta:
         return Delta(self.a.sections[code].turnover, self.b.sections[code].turnover)
 
-    def cash_in(self, code: str) -> Delta:
-        return Delta(self.a.sections[code].cash_in, self.b.sections[code].cash_in)
+    def net_cash(self, code: str) -> Delta:
+        return Delta(self.a.sections[code].net_cash, self.b.sections[code].net_cash)
 
     def debt_given(self, code: str) -> Delta:
         return Delta(self.a.sections[code].debt_given, self.b.sections[code].debt_given)

@@ -1026,12 +1026,12 @@ def compare_text(c: object) -> str:
     for code in c.a.sections:
         out += ["", f"📂 {SECTION_NAMES[code]}"]
         for label, d in (
-            ("🛍 Savdo (tovar)", c.turnover(code)),
-            ("💵 Kassaga kirim", c.cash_in(code)),
+            ("🧾 Tovar aylanmasi", c.turnover(code)),
+            ("💰 Kassaga kirdi (sof)", c.net_cash(code)),
             ("📒 Yangi qarz", c.debt_given(code)),
         ):
             pct = f" ({d.percent})" if d.percent else ""
-            sign = "+" if d.diff > 0 else ("−" if d.diff < 0 else "")
+            sign = "+" if d.diff > 0 else ("-" if d.diff < 0 else "")
             out.append(f"{label}: {money(d.a)} → {money(d.b)}  [{sign}{money(abs(d.diff))}{pct}]")
     return "\n".join(out)
 
@@ -1040,11 +1040,14 @@ def payments_list(rows: list[tuple[date, str, str, int, str]], label: str) -> st
     """rows: (date, customer, section code, amount, kind)."""
     out = [f"💵 To'lovlar — {label}", ""]
     total: dict[str, int] = {}
+    for _, _, code, amount, kind in rows:
+        if kind == "payment":
+            total[code] = (
+                total.get(code, 0) + amount
+            )  # totals cover ALL rows, not only the shown ones
     for when, who, code, amount, kind in rows[:30]:
         mark = "" if kind == "payment" else " (kechildi)"
         out.append(f"• {format_date(when)} · {who} — {SECTION_NAMES[code]}: {money(amount)}{mark}")
-        if kind == "payment":
-            total[code] = total.get(code, 0) + amount
     if len(rows) > 30:
         out.append(more_debts(len(rows) - 30))
     out += ["", *[f"Jami {SECTION_NAMES[c]}: {money(v)}" for c, v in total.items()]]

@@ -187,7 +187,7 @@ async def test_compare_two_periods(sm: SM) -> None:
         cmp = await reports.compare_periods(s, Period(D10, D10, "a"), Period(D11, D11, "b"))
     t = cmp.turnover("shop")
     assert (t.a, t.b, t.diff, t.percent) == (950_000, 0, -950_000, "-100,0%")
-    assert cmp.cash_in("shop").diff == 100_000 - 650_000
+    assert cmp.net_cash("shop").diff == 100_000 - 650_000
 
 
 def test_delta_percent_is_integer_math() -> None:
@@ -197,3 +197,17 @@ def test_delta_percent_is_integer_math() -> None:
     assert Delta(100, 100).percent == "0,0%"
     assert Delta(0, 500).percent is None
     assert Delta(1_000_000, 1_000_001).percent == "+0,0%"
+
+
+def test_excel_formula_injection_is_neutralised() -> None:
+    from io import BytesIO
+
+    from openpyxl import load_workbook
+
+    from bot.services.excel_export import debtors_workbook
+    from bot.services.ledger import DebtorRow
+
+    row = DebtorRow(1, "=HYPERLINK(1)", "opa", 1, 100_000, None)
+    wb = load_workbook(BytesIO(debtors_workbook([row], {1: "+998900000000"}, {1: "shop"})))
+    cell = wb.worksheets[0]["B2"]
+    assert cell.data_type == "s" and cell.value.startswith("'=")

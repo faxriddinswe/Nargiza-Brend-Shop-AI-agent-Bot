@@ -12,7 +12,7 @@ from datetime import date, datetime, timedelta
 from typing import Protocol
 
 import structlog
-from aiogram.exceptions import TelegramForbiddenError
+from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -44,6 +44,11 @@ async def _claim(sm: SM, key: str, token: str) -> bool:
         return True
 
 
+async def _release(sm: SM, key: str) -> None:
+    async with uow(sm, actor_kind="system") as s:
+        await settings_svc.set_value(s, key, "", actor_id=None)
+
+
 async def _recipients(sm: SM) -> list[int]:
     async with read_session(sm) as s:
         rows = await s.scalars(
@@ -65,8 +70,15 @@ async def _broadcast(bot: Sender, sm: SM, text: str) -> int:
         except TelegramForbiddenError:
             async with uow(sm, actor_kind="system") as s:
                 await users_svc.mark_bot_blocked(s, chat_id)
-        except Exception:
-            log.warning("report_send_failed")
+        except TelegramRetryAfter as e:
+            await asyncio.sleep(min(e.retry_after, 30))
+            try:
+                await bot.send_message(chat_id, text)
+                sent += 1
+            except Exception as e2:
+                log.warning("report_send_failed", error=type(e2).__name__)
+        except Exception as e:
+            log.warning("report_send_failed", error=type(e).__name__)
         await asyncio.sleep(SEND_PAUSE)
     return sent
 
@@ -75,10 +87,17 @@ async def daily_report(bot: Sender, sm: SM, *, today: date | None = None) -> int
     day = today or today_tashkent()
     if not await _claim(sm, "report.daily.last_sent", day.isoformat()):
         return 0
-    async with read_session(sm) as s:
-        report = await reports.sales_report(s, Period(day, day, "bugun"))
+    try:
+        async with read_session(sm) as s:
+            report = await reports.sales_report(s, Period(day, day, "bugun"))
+    except Exception:
+        await _release(sm, "report.daily.last_sent")
+        raise
     text = f"{t.daily_report_title()}\n\n{t.report_text(report, daily_note=True)}"
     sent = await _broadcast(bot, sm, text)
+    if sent == 0 and await _recipients(sm):
+        await _release(sm, "report.daily.last_sent")  # nobody received it: allow a retry
+        log.error("daily_report_not_delivered")
     log.info("daily_report_sent", recipients=sent)
     return sent
 
@@ -90,11 +109,18 @@ async def monthly_report(bot: Sender, sm: SM, *, today: date | None = None) -> i
         return 0
     last_month_end = first - timedelta(days=1)
     period = Period(last_month_end.replace(day=1), last_month_end, "o'tgan oy")
-    async with read_session(sm) as s:
-        report = await reports.sales_report(s, period)
+    try:
+        async with read_session(sm) as s:
+            report = await reports.sales_report(s, period)
+    except Exception:
+        await _release(sm, "report.monthly.last_sent")
+        raise
     sent = await _broadcast(
         bot, sm, f"📅 Oylik hisobot\n\n{t.report_text(report)}{t.monthly_report_extra()}"
     )
+    if sent == 0 and await _recipients(sm):
+        await _release(sm, "report.monthly.last_sent")
+        log.error("monthly_report_not_delivered")
     log.info("monthly_report_sent", recipients=sent)
     return sent
 
@@ -103,7 +129,7 @@ def setup_scheduler(bot: Sender, sm: SM, settings: Settings) -> AsyncIOScheduler
     scheduler = AsyncIOScheduler(timezone=settings.tz)
     common = {
         "coalesce": True,
-        "misfire_grace_time": 3600,
+        "misfire_grace_time": 6 * 3600,
         "max_instances": 1,
         "replace_existing": True,
     }

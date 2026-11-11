@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.5.0] — Stage 6 (reports, Excel, scheduled reports) — 2026-11-11
+- Reports per period and section (sales, cash, credit, write-offs, returns, product types), period comparison, payments list.
+- Excel export (sales, debtors, stock) with formula-injection protection; AI tools `get_sales_report`, `compare_periods`, `list_payments`, `export_excel`.
+- 20:00 daily and monthly (1st, 09:00) reports, Asia/Tashkent; retried if nobody received them.
+- 📊 Hisobot button shows today's report.
+
 ## [0.4.0] — Stage 5 (sales, stock, returns) — 2026-11-11
 - Sales: cash, mixed (cash + linked credit part), agreed-price discount; sale arithmetic in pure, tested functions.
 - Stock ledger: stock-in, inventory count, low-stock (default 3), negative stock warned; credit goods leave the stock too.

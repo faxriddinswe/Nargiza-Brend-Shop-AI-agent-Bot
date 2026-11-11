@@ -14,6 +14,14 @@ from bot.services.ledger import DebtorRow
 from bot.services.reports import PeriodReport
 from bot.texts import uz_latn as t
 
+_DANGEROUS = ("=", "+", "-", "@", "\t", "\r")
+
+
+def safe(value: str) -> str:
+    """Text that Excel could run as a formula (=HYPERLINK…) is stored as plain text."""
+    return "'" + value if value.startswith(_DANGEROUS) else value
+
+
 MONEY = '#,##0" so\'m"'
 
 
@@ -30,6 +38,8 @@ def _widths(ws: Worksheet, widths: Sequence[int]) -> None:
 
 
 def _to_bytes(wb: Workbook) -> bytes:
+    if not wb.worksheets:
+        wb.create_sheet("Bo'sh")
     buf = BytesIO()
     wb.save(buf)
     return buf.getvalue()
@@ -59,7 +69,7 @@ def sales_workbook(r: PeriodReport) -> bytes:
         start = 4 + len(rows) + 1
         _header(ws, start, ["Tovar turi", "Soni", "Summa (ro'yxat narxida)"])
         for i, line in enumerate(s.categories, start + 1):
-            ws.cell(row=i, column=1, value=line.name.capitalize())
+            ws.cell(row=i, column=1, value=safe(line.name.capitalize()))
             ws.cell(row=i, column=2, value=line.quantity)
             ws.cell(row=i, column=3, value=line.amount).number_format = MONEY
         _widths(ws, [38, 20, 26])
@@ -81,8 +91,8 @@ def debtors_workbook(
         items = by_section.get(code, [])
         for i, r in enumerate(items, 1):
             ws.cell(row=i + 1, column=1, value=i)
-            ws.cell(row=i + 1, column=2, value=f"{r.name} {r.form}")
-            ws.cell(row=i + 1, column=3, value=phones.get(r.customer_id) or "⚠️ telefon kerak")
+            ws.cell(row=i + 1, column=2, value=safe(f"{r.name} {r.form}"))
+            ws.cell(row=i + 1, column=3, value=safe(phones.get(r.customer_id) or "⚠️ telefon kerak"))
             ws.cell(row=i + 1, column=4, value=r.owed).number_format = MONEY
             ws.cell(
                 row=i + 1, column=5, value=r.next_due.isoformat() if r.next_due else "muddatsiz"
@@ -102,7 +112,7 @@ def stock_workbook(rows: Sequence[StockRow]) -> bytes:
         ws = wb.create_sheet(t.SECTION_NAMES[code])
         _header(ws, 1, ["Tovar turi", "Qoldiq", "Kam qolish chegarasi", "Holat"])
         for i, r in enumerate((x for x in rows if x.section_code == code), 2):
-            ws.cell(row=i, column=1, value=r.name.capitalize())
+            ws.cell(row=i, column=1, value=safe(r.name.capitalize()))
             ws.cell(row=i, column=2, value=r.qty)
             ws.cell(row=i, column=3, value=r.threshold)
             ws.cell(
