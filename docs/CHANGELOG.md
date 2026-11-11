@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.0] — Stage 5 (sales, stock, returns) — 2026-11-11
+- Sales: cash, mixed (cash + linked credit part), agreed-price discount; sale arithmetic in pure, tested functions.
+- Stock ledger: stock-in, inventory count, low-stock (default 3), negative stock warned; credit goods leave the stock too.
+- Returns and exchanges: debt reduced first, excess refunded in cash; discount spread exactly; partial returns; cancel
+  of sales, returns (with guards); AI tools `add_sale`, `add_stock_in`, `stock_count`, `get_stock`, `list_low_stock`, `register_return`.
+- Reviews fixed: exact refund shares (no 1-so'm over-refund), linked debts only cancel with their sale, `return`
+  payments only with their return, row locks for customer-less sales, customer-less returns never see other customers' purchases.
+- 449 automated tests.
+
 ## [0.3.0] — Stage 3/4 (AI agent: text and voice) — 2026-11-11
 - `ai/` package: provider-neutral `AIProvider`, 12 Pydantic tool schemas, system prompt, `GeminiProvider`
   (google-genai; audio as `audio/ogg`; function calling forced, automatic calling disabled).

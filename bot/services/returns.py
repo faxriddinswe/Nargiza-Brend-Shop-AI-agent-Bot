@@ -2,7 +2,7 @@
 
 - The original record is never edited; "returned so far" is derived from active returns per source item.
 - Value of returned units = their price with the sale's discount spread proportionally; partial returns add up
-  to exactly what was paid (`sale_math.proportional_value`).
+  to exactly what was paid (`sale_math.split_total`, `item_value`).
 - Money: the linked/own debt is reduced first (a `return` payment), the EXCESS is a cash refund (BR-084a).
 - Stock goes back up. Cancelling a return reverses all of it.
 Exchange = return + new sale in one transaction (see handlers/staff/actions.py).
@@ -14,6 +14,7 @@ from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
+from typing import Any
 
 from sqlalchemy import BigInteger, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,7 +34,7 @@ from bot.db.models import (
 )
 from bot.services import inventory, ledger
 from bot.services.customers import require_staff
-from bot.services.sale_math import SaleMathError, proportional_value
+from bot.services.sale_math import SaleMathError, item_value, split_total
 
 
 class ReturnError(ledger.LedgerError):
@@ -57,6 +58,7 @@ class SourceItem:
     unit_price: int
     returned_qty: int
     returned_value: int
+    share: int  # this line's part of the agreed price (discount spread, exact)
 
     @property
     def returnable(self) -> int:
@@ -121,7 +123,7 @@ async def _returned(
 
 async def source_view(session: AsyncSession, source_type: str, source_id: int) -> SourceView:
     cats = {c.id: c.name for c in (await session.execute(select(Category))).scalars()}
-    raw: Sequence[SaleItem] | Sequence[DebtItem]
+    raw: Sequence[Any]  # SaleItem rows or DebtItem rows (same columns used below)
     if source_type == "sale":
         sale = await session.get(Sale, source_id)
         if sale is None or sale.status != LedgerStatus.ACTIVE:
@@ -154,18 +156,25 @@ async def source_view(session: AsyncSession, source_type: str, source_id: int) -
         )
     else:
         raise SourceNotFoundError(source_type)
-    done = await _returned(session, source_type, [r.id for r in raw])
-    items = tuple(
-        SourceItem(
-            r.id,
-            r.category_id,
-            cats.get(r.category_id, "?"),
-            r.quantity,
-            r.unit_price,
-            *done.get(r.id, (0, 0)),
+    rows: list[Any] = list(raw)  # SaleItem or DebtItem rows: same columns used below
+    done = await _returned(session, source_type, [r.id for r in rows])
+    shares = split_total(total, [r.quantity * r.unit_price for r in rows]) if rows else []
+    items_list: list[SourceItem] = []
+    for row, sh in zip(rows, shares, strict=True):  # SaleItem | DebtItem both have the fields used
+        done_qty, done_value = done.get(row.id, (0, 0))
+        items_list.append(
+            SourceItem(
+                row.id,
+                row.category_id,
+                cats.get(row.category_id, "?"),
+                row.quantity,
+                row.unit_price,
+                done_qty,
+                done_value,
+                sh,
+            )
         )
-        for r in raw
-    )
+    items = tuple(items_list)
     name = None
     if customer_id is not None:
         c = await session.get(Customer, customer_id)
@@ -210,6 +219,9 @@ async def returnable_sources(
     if customer_id is not None:
         sq = sq.where(Sale.customer_id == customer_id)
         dq = dq.where(Debt.customer_id == customer_id)
+    else:  # nobody named: only sales made without a customer — never someone else's purchase
+        sq = sq.where(Sale.customer_id.is_(None))
+        dq = dq.where(Debt.customer_id.is_(None))
     found += [(d, "sale", i) for d, i in (await session.execute(sq)).all()]
     found += [(d, "debt", i) for d, i in (await session.execute(dq)).all()]
     found.sort(key=lambda x: (x[0], x[2]), reverse=True)
@@ -227,6 +239,12 @@ async def returnable_sources(
     return views
 
 
+async def lock_source(session: AsyncSession, source_type: str, source_id: int) -> None:
+    """Row lock on the original record: two staff can't return / cancel the same sale at once."""
+    model = Sale if source_type == "sale" else Debt
+    await session.execute(select(model.id).where(model.id == source_id).with_for_update())
+
+
 async def plan_return(
     session: AsyncSession, source_type: str, source_id: int, qty_by_item: Mapping[int, int]
 ) -> ReturnPlan:
@@ -238,13 +256,14 @@ async def plan_return(
         if item is None or qty <= 0:
             raise NothingReturnableError(item_id)
         try:
-            value = proportional_value(
-                qty, item.unit_price, total=src.total, items_total=src.items_total,
+            value = item_value(
+                qty, share=item.share, item_quantity=item.quantity,
                 already_returned_value=item.returned_value, already_returned_qty=item.returned_qty,
-                item_quantity=item.quantity,
             )  # fmt: skip
         except SaleMathError as exc:
             raise NothingReturnableError(item_id) from exc
+        if value <= 0:
+            raise NothingReturnableError(item_id)
         lines.append(ReturnLine(item.id, item.category_id, item.name, qty, value))
     if not lines:
         raise NothingReturnableError(source_id)
@@ -278,6 +297,7 @@ async def register_return(
     first = await source_view(session, source_type, source_id)
     if first.customer_id is not None:
         await ledger.lock_customer(session, first.customer_id)
+    await lock_source(session, source_type, source_id)
     plan = await plan_return(session, source_type, source_id, qty_by_item)
     if expected is not None and (plan.value, plan.debt_reduction, plan.cash_refund) != tuple(
         expected
@@ -348,12 +368,17 @@ async def cancel_return(
         raise ReturnError("return not found")
     if ret.customer_id is not None:
         await ledger.lock_customer(session, ret.customer_id)
+    await lock_source(session, ret.source_type, ret.source_id)
     await session.refresh(ret)
     if ret.status != LedgerStatus.ACTIVE:
         raise ledger.AlreadyCancelledError
     if ret.return_payment_id is not None:
         await ledger.cancel_payment(
-            session, actor, ret.return_payment_id, reason or "qaytarish bekor qilindi"
+            session,
+            actor,
+            ret.return_payment_id,
+            reason or "qaytarish bekor qilindi",
+            from_return=True,
         )
     ret.status = LedgerStatus.CANCELLED
     ret.cancelled_at = datetime.now(UTC)

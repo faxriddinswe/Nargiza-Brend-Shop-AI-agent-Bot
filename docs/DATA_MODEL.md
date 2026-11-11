@@ -189,3 +189,27 @@ Deferred constraint triggers (checked at COMMIT):
 - debt remaining = total_amount − Σ allocations of active payments (cancelled debts excluded entirely)
 - customer balance per section = Σ remaining of active debts
 - cancelling a payment frees its allocations; cancelling a debt with active allocations is refused.
+
+
+## Stage 5 tables — sales, stock, returns (implemented: migrations 0007, 0008)
+
+```mermaid
+erDiagram
+    sales ||--o{ sale_items : contains
+    sales ||--o| debts : "unpaid part (sale_remainder)"
+    categories ||--o{ stock_movements : "Σ = stock"
+    returns ||--o{ return_items : contains
+    returns }o--|| payments : "debt part (kind=return)"
+```
+
+- **sales**: `items_total − discount_amount = total_amount`; `0 ≤ paid_amount ≤ total_amount`; an unpaid part needs a customer
+  (CHECKs). Immutable amounts; status `active → cancelled` only. Unpaid part = `debts` row with `kind='sale_remainder'`,
+  `sale_id` set (UNIQUE) and no items.
+- **sale_items**: composite FKs keep an item inside its sale's section; deferred trigger checks Σ qty×price = items_total.
+- **stock_movements**: append-only ledger (+/−, `reason`: stock_in, sale, debt, return, count_adjustment, cancel).
+  Stock = Σ per category; negative is allowed and warned about.
+- **returns / return_items**: `value = debt_reduction + cash_refund` (CHECK). The debt part is a `payments` row of
+  `kind='return'` (reduces debt like a payment, but is neither cash nor a loss). Returned quantity per source line is derived
+  from active returns; the sale discount is spread over lines with the largest-remainder method so refunds never exceed what was paid.
+- Cash in = `sales.paid_amount` + `payments(kind='payment')`; cash out = `returns.cash_refund`. `write_off` and `return`
+  payments are not cash.

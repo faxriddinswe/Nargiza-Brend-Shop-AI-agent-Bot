@@ -151,6 +151,7 @@ async def cancel_sale(
         raise SaleError("sale not found")
     if sale.customer_id is not None:
         await ledger.lock_customer(session, sale.customer_id)
+    await session.execute(select(Sale.id).where(Sale.id == sale.id).with_for_update())
     await session.refresh(sale)
     if sale.status != LedgerStatus.ACTIVE:
         raise ledger.AlreadyCancelledError
@@ -162,7 +163,9 @@ async def cancel_sale(
         select(Debt).where(Debt.sale_id == sale.id, Debt.status == LedgerStatus.ACTIVE)
     )
     if linked is not None:
-        await ledger.cancel_debt(session, actor, linked.id, reason)  # raises DebtHasPaymentsError
+        await ledger.cancel_debt(
+            session, actor, linked.id, reason, from_sale=True
+        )  # raises DebtHasPaymentsError
     sale.status = LedgerStatus.CANCELLED
     sale.cancelled_at = datetime.now(UTC)
     sale.cancelled_by = actor.id

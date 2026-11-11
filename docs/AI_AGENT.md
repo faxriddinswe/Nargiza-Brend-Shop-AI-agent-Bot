@@ -60,6 +60,10 @@ and selected with `AI_PROVIDER`.
 | `write_off` | write | Forgive a debt (partial or `all`) |
 | `create_customer` / `delete_customer` | write | Customer management |
 | `cancel_last_entry` | write | Cancel the latest record — with no name, the caller's own latest; the card shows who wrote it and when |
+| `add_sale` | write | Cash or mixed sale (optional agreed total = discount, `paid_text` = cash now, rest on credit) |
+| `add_stock_in`, `stock_count` | write | Stock-in; inventory count / opening stock (stored as adjustments) |
+| `register_return` | write | Return, or exchange when `new_items` is given; the dispatcher finds the original purchase and asks which one / how many |
+| `get_stock`, `list_low_stock` | read | Stock levels; low or negative stock |
 | `get_customer_debt`, `search_customer` | read | Answer immediately |
 | `list_debtors`, `list_overdue` | read | Debtors by size; overdue debts with days |
 | `ask` | — | One short clarifying question |

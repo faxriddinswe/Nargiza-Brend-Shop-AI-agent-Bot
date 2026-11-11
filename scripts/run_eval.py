@@ -83,6 +83,28 @@ async def check(
         errs.append(
             f"amount {a.get('amount_text')!r} -> {_amount(a.get('amount_text'))} != {want['amount']}"
         )
+    if "total" in want and _amount(a.get("total_text")) != want["total"]:
+        errs.append(
+            f"total {a.get('total_text')!r} -> {_amount(a.get('total_text'))} != {want['total']}"
+        )
+    if "paid" in want and _amount(a.get("paid_text")) != want["paid"]:
+        errs.append(
+            f"paid {a.get('paid_text')!r} -> {_amount(a.get('paid_text'))} != {want['paid']}"
+        )
+    if "quantity" in want and a.get("quantity") != want["quantity"]:
+        errs.append(f"quantity {a.get('quantity')} != {want['quantity']}")
+    for i, wi in enumerate(want.get("new_items", [])):
+        got = a.get("new_items") or []
+        if i >= len(got):
+            errs.append(f"new_item #{i} missing")
+            continue
+        cat = await resolve_category(session, str(got[i].get("item") or ""))
+        if cat is None or cat.name != wi["cat"]:
+            errs.append(
+                f"new_item#{i} {got[i].get('item')!r} -> {cat.name if cat else None} != {wi['cat']}"
+            )
+        if _amount(got[i].get("unit_price_text")) != wi["price"]:
+            errs.append(f"new_item#{i} price {got[i].get('unit_price_text')!r} != {wi['price']}")
     if "section" in want and a.get("section") != want["section"]:
         # "ichki kiyim qarziga" may come as item="ichki kiyim": the code derives the section from it
         cat = await resolve_category(session, str(a.get("item") or ""))

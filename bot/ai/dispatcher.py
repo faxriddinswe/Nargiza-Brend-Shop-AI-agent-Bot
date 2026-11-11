@@ -393,9 +393,10 @@ async def _register_return(
         src = await returns.source_view(session, typ, int(raw_id))
     except (returns.ReturnError, ValueError):
         return Outcome(text=t.RETURN_NOT_FOUND, customer_id=cid)
-    if customer is None and src.customer_id is not None:
-        customer = await cust.get(session, src.customer_id, include_deleted=True)
-        cid = customer.id
+    if cid is not None and src.customer_id != cid:
+        return Outcome(
+            text=t.RETURN_NOT_FOUND, customer_id=cid
+        )  # a button for another customer's purchase
     items = [i for i in src.items if i.category_id == cat.id and i.returnable > 0]
     available = sum(i.returnable for i in items)
     if not items:

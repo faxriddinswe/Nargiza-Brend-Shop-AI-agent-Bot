@@ -98,6 +98,8 @@ async def stock_in(
     require_staff(actor)
     if not 1 <= quantity <= 100_000:
         raise InventoryError("bad quantity")
+    if not await levels(session, [category_id], active_only=False):
+        raise InventoryError("unknown category")
     await add_movement(
         session,
         category_id=category_id,

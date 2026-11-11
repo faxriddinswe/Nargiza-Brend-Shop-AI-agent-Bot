@@ -65,27 +65,39 @@ def plan_sale(
     return SalePlan(items_total, items_total - total, total, paid_now, debt)
 
 
-def proportional_value(
+def split_total(total: int, weights: list[int]) -> list[int]:
+    """Spread `total` over lines in proportion to `weights` so that the parts add up to EXACTLY `total`.
+
+    Largest-remainder method on integers (no floats); ties go to the earlier line. Used to give every sale
+    line its share of the agreed price (discount included).
+    """
+    if total < 0 or not weights or any(w <= 0 for w in weights):
+        raise SaleMathError("bad split")
+    whole = sum(weights)
+    base = [total * w // whole for w in weights]
+    order = sorted(range(len(weights)), key=lambda i: (-(total * weights[i] % whole), i))
+    for i in order[: total - sum(base)]:
+        base[i] += 1
+    return base
+
+
+def item_value(
     quantity: int,
-    unit_price: int,
     *,
-    total: int,
-    items_total: int,
+    share: int,
+    item_quantity: int,
     already_returned_value: int,
     already_returned_qty: int,
-    item_quantity: int,
 ) -> int:
-    """Refund value of returning `quantity` units of one sale item, discount included (BR-081, returns).
+    """Refund value of returning `quantity` more units of one sale line whose price share is `share`.
 
-    The sale's discount is spread over its items in proportion to price. To make sure partial returns add up to
-    exactly the amount paid, the value is computed on the CUMULATIVE returned quantity and the earlier value is
-    subtracted. Rounding is half-up on integers (no floats).
+    Computed on the CUMULATIVE returned quantity (round-half-up) minus what was already refunded, so partial
+    returns add up to exactly `share` and the whole sale never refunds more than was paid.
     """
     if quantity <= 0 or quantity + already_returned_qty > item_quantity:
         raise SaleMathError("bad return quantity")
-    cumulative = quantity + already_returned_qty
-    value_all = _round_div(cumulative * unit_price * total, items_total)
-    return value_all - already_returned_value
+    cumulative = _round_div((quantity + already_returned_qty) * share, item_quantity)
+    return cumulative - already_returned_value
 
 
 def _round_div(numerator: int, denominator: int) -> int:

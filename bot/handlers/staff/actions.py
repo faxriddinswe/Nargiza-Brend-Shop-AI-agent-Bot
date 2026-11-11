@@ -183,6 +183,7 @@ async def _cancel_entry(
     who = await staff_svc.actor_label(session, actor)
     codes = await ledger.section_codes(session)
     customer: Customer | None
+    told = True  # was the customer ever messaged about this record? then tell them about the correction too
     if kind == "debt":
         debt = await ledger.cancel_debt(session, actor, rid)
         customer = await cust.get(session, debt.customer_id, include_deleted=True)
@@ -195,6 +196,9 @@ async def _cancel_entry(
             else None
         )
         amount, section_id = sale.total_amount, sale.section_id
+        told = (
+            sale.total_amount > sale.paid_amount
+        )  # a fully cash sale was never announced to the customer
     elif kind == "return":
         ret = await returns.cancel_return(session, actor, rid)
         customer = (
@@ -210,7 +214,7 @@ async def _cancel_entry(
         kind = pay.kind
     what = t.KIND_NAMES[kind].lower()
     notify: Notify = []
-    if customer is not None and customer.deleted_at is None and kind != "sale_cash":
+    if customer is not None and customer.deleted_at is None and told:
         notify += await _customer_notice(
             session,
             customer,

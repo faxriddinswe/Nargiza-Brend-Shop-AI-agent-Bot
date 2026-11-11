@@ -350,3 +350,10 @@ async def test_app_role_cannot_edit_or_delete_stock_and_sale_items(app_sm: SM, s
         with pytest.raises(DBAPIError):
             async with uow(app_sm, actor_id=w.staff.id) as s:
                 await s.execute(text(sql))
+
+
+async def test_stock_in_unknown_category_is_a_clean_error(sm: SM) -> None:
+    w = await _world(sm)
+    with pytest.raises(inventory.InventoryError):
+        async with uow(sm, actor_id=w.staff.id) as s:
+            await inventory.stock_in(s, w.staff, 999_999, 5)

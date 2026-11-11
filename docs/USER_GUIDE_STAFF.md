@@ -83,3 +83,26 @@ Summani qanday aytsangiz ham bo'ladi: «350 ming», «uch yuz ellik ming», «ya
 
 **Muhim:** bot hech narsani o'zi yozmaydi. Har safar kartani ko'rsatadi — tekshirib **✅ Tasdiqlash** bosasiz.
 Ovozli xabar 1,5 daqiqagacha bo'lsin. Bot «hozir tinglay olmayapman» desa, pastdagi tugmalardan foydalaning.
+
+
+## 🛍 Savdo, 📦 ombor va ↩️ qaytarish (yozib yoki gapirib)
+
+| Aytasiz | Bot nima qiladi |
+|---|---|
+| «Ko'ylak 450 ming sotildi» | Naqd savdo kartasi (mijozsiz) |
+| «500 minglik ko'ylakni 450 ga sotdim» | Chegirma bilan: savdo 450 000, chegirma 50 000 |
+| «Umidaga ko'ylak 500 ming, 200 berdi, qolgani qarz» | Savdo 500 000: naqd 200 000, nasiya 300 000 (muddatni so'raydi) |
+| «20 ta yubka keldi» | Ombor kirimi kartasi |
+| «Ko'ylak 45 ta, yubka 30 ta» (sanab chiqqaningizda) | Ombor sanog'i: farq «tuzatish» bo'lib yoziladi |
+| «Nechta ko'ylak qoldi?» / «Nima kam qoldi?» | Darhol javob (kam qolish chegarasi — 3 ta) |
+| «Umida ko'ylakni qaytardi» | Qaytarish kartasi |
+| «Umida ko'ylakni qaytardi, o'rniga oyoq kiyim oldi 280 ming» | Almashtirish: qaytarish + yangi savdo, sof farq kartada |
+
+**Qaytarishda pul qanday hisoblanadi:**
+- Qarzga olingan tovar qaytsa — avval **qarzdan ayiriladi**. Qarz yopilgandan keyin ortib qolgan pul **mijozga naqd qaytariladi**.
+- Chegirma bilan sotilgan tovarning qiymati chegirma hisobga olingan holda qaytariladi (to'langandan ortiq qaytmaydi).
+- Qaysi xariddan ekani aniq bo'lmasa, bot tugmalar bilan so'raydi. Nechtasi qaytgani aytilmasa ham so'raydi.
+- Muddat cheklovi yo'q.
+- Xato bo'lsa: «⚙️ Boshqa» → **🚫 Yozuvni bekor qilish** — savdo, qaytarish, qarz va to'lov hammasi bekor qilinadi. Qaytarilgan tovari bor savdoni bekor qilish uchun avval qaytarishni bekor qiling. Mijozga allaqachon qaytarib berilgan naqd pulni dastur qaytarib ola olmaydi — buni o'zingiz hal qilasiz.
+
+**Ombor:** 📦 **Ombor** tugmasi hamma qoldiqni ko'rsatadi. Qoldiq manfiy bo'lsa bot ogohlantiradi («kirim yozilmagan bo'lishi mumkin»). Boshlang'ich qoldiqni bir marta sanoq bilan kiriting.

@@ -132,11 +132,11 @@
 - say: "Bugun qancha savdo bo'ldi?"
   expect: [{tool: say}]
 - say: "Ko'ylak sotildi 450 ming naqd"
-  expect: [{tool: say}]
+  expect: [{tool: add_sale, items: [{cat: "ko'ylak", qty: 1, price: 450000}]}]
 - say: "Nechta yubka qoldi?"
-  expect: [{tool: say}]
+  expect: [{tool: get_stock, item: yubka}]
 - say: "20 ta yubka keldi"
-  expect: [{tool: say}]
+  expect: [{tool: add_stock_in, item: yubka, quantity: 20}]
 - say: "Assalomu alaykum"
   expect: [{tool: say}]
 - say: "Rahmat"
@@ -158,3 +158,34 @@
   expect: [{tool: add_debt, customer: umida, items: [{cat: "ko'ylak", qty: 1, price: 350000}], due: unset}]
 - say: "Madinaga 3 ta ko'ylak, jami 600 ming, qarz"
   expect: [{tool: ask}]
+# --- Stage 5: sales, stock, returns, exchanges
+- say: "500 minglik ko'ylakni 450 ga sotdim"
+  expect: [{tool: add_sale, items: [{cat: "ko'ylak", qty: 1, price: 500000}], total: 450000}]
+- say: "Umidaga ko'ylak 500 ming, 200 berdi, qolgani qarz"
+  expect: [{tool: add_sale, customer: umida, items: [{cat: "ko'ylak", qty: 1, price: 500000}], paid: 200000}]
+- say: "2 ta yubka sotildi, bittasi 90 ming"
+  expect: [{tool: add_sale, items: [{cat: yubka, qty: 2, price: 90000}]}]
+- say: "Tufli sotildi uch yuz ming"
+  expect: [{tool: add_sale, items: [{cat: "oyoq kiyim", qty: 1, price: 300000}]}]
+- say: "Ichki kiyim 3 ta sotildi, 40 mingdan"
+  expect: [{tool: add_sale, items: [{cat: "ichki kiyim", qty: 3, price: 40000}]}]
+- say: "Sumka sotdim 250 ming, Madinaga, 100 ming berdi"
+  expect: [{tool: add_sale, customer: madina, items: [{cat: sumka, qty: 1, price: 250000}], paid: 100000}]
+- say: "Kolgotka 5 ta keldi"
+  expect: [{tool: add_stock_in, item: kolgotka, quantity: 5}]
+- say: "Ko'ylak 45 ta, yubka 30 ta, shim 20 ta — sanab chiqdim"
+  expect: [{tool: stock_count}]
+- say: "Ombordagi ko'ylak nechta?"
+  expect: [{tool: get_stock, item: "ko'ylak"}]
+- say: "Nima kam qoldi?"
+  expect: [{tool: list_low_stock}]
+- say: "Qaysi tovarlar tugab qoldi?"
+  expect: [{tool: list_low_stock}]
+- say: "Umida ko'ylakni qaytardi"
+  expect: [{tool: register_return, customer: umida, item: "ko'ylak"}]
+- say: "Madina yubkani qaytardi, 2 tadan bittasini"
+  expect: [{tool: register_return, customer: madina, item: yubka, quantity: 1}]
+- say: "Shahlo opa ko'ylakni qaytardi, o'rniga oyoq kiyim oldi, 280 ming"
+  expect: [{tool: register_return, customer: shahlo, item: "ko'ylak", new_items: [{cat: "oyoq kiyim", qty: 1, price: 280000}]}]
+- say: "Umida kofta qaytardi o'rniga bluzka oldi 180 ming"
+  expect: [{tool: register_return, customer: umida, item: kofta, new_items: [{cat: bluzka, qty: 1, price: 180000}]}]

@@ -403,7 +403,12 @@ async def record_payment(
 
 # ---------------------------------------------------------------- cancellation (BR-104)
 async def cancel_payment(
-    session: AsyncSession, actor: User, payment_id: int, reason: str | None = None
+    session: AsyncSession,
+    actor: User,
+    payment_id: int,
+    reason: str | None = None,
+    *,
+    from_return: bool = False,
 ) -> Payment:
     require_staff(actor)
     p = await session.get(Payment, payment_id)
@@ -413,6 +418,8 @@ async def cancel_payment(
     await session.refresh(p)
     if p.status != LedgerStatus.ACTIVE:
         raise AlreadyCancelledError
+    if p.kind == "return" and not from_return:
+        raise LedgerError("belongs to a return: cancel the return instead")
     p.status = LedgerStatus.CANCELLED
     p.cancelled_at = datetime.now(UTC)
     p.cancelled_by = actor.id
@@ -422,7 +429,12 @@ async def cancel_payment(
 
 
 async def cancel_debt(
-    session: AsyncSession, actor: User, debt_id: int, reason: str | None = None
+    session: AsyncSession,
+    actor: User,
+    debt_id: int,
+    reason: str | None = None,
+    *,
+    from_sale: bool = False,
 ) -> Debt:
     require_staff(actor)
     d = await session.get(Debt, debt_id)
@@ -432,6 +444,8 @@ async def cancel_debt(
     await session.refresh(d)
     if d.status != LedgerStatus.ACTIVE:
         raise AlreadyCancelledError
+    if d.kind != "regular" and not from_sale:
+        raise LedgerError("linked to a sale: cancel the sale instead")
     from bot.services import returns
 
     if d.kind == "regular" and await returns.active_returns_count(session, "debt", d.id):
@@ -487,7 +501,7 @@ async def recent_entries(
     debts_q = (
         select(Debt.id, Debt.customer_id, Customer.name, Debt.section_id, Debt.total_amount, Debt.created_at, Debt.created_by)
         .join(Customer, Customer.id == Debt.customer_id)
-        .where(Debt.status == LedgerStatus.ACTIVE)
+        .where(Debt.status == LedgerStatus.ACTIVE, Debt.kind == "regular")
         .order_by(Debt.created_at.desc())
         .limit(limit)
     )  # fmt: skip

@@ -321,3 +321,68 @@ async def test_db_guards_on_returns(sm: SM) -> None:
                 ),
                 {"s": w.cats["ko'ylak"].section_id, "i": sale.sale_id, "d": TODAY},
             )
+
+
+# ---------------------------------------------------------------- review fixes (stage 5)
+async def test_discounted_three_lines_never_refund_more_than_paid(sm: SM) -> None:
+    """3 lines of 100, agreed price 200 → returning all lines refunds exactly 200 (was 201)."""
+    w = await _world(sm)
+    cats = [w.cats["yubka"], w.cats["shim"], w.cats["kofta"]]
+    sale = await _sell(sm, w, [ItemInput(c.id, 1, 100_000) for c in cats], total=200_000)
+    assert sale.plan.total == 200_000
+    items = await _item_ids(sm, "sale", sale.sale_id)
+    values = [(await _return(sm, w, "sale", sale.sale_id, {i.id: 1}))[0].value for i in items]
+    assert sum(values) == 200_000 and sorted(values) == [66_666, 66_667, 66_667]
+
+
+async def test_linked_debt_cannot_be_cancelled_on_its_own(sm: SM) -> None:
+    w = await _world(sm)
+    sale = await _sell(
+        sm, w, [ItemInput(w.cats["ko'ylak"].id, 1, 500_000)], customer=w.customer, paid=200_000
+    )
+    with pytest.raises(ledger.LedgerError):
+        async with uow(sm, actor_id=w.staff.id) as s:
+            await ledger.cancel_debt(s, w.staff, sale.debt_id or 0)
+    async with read_session(sm) as s:
+        assert not [
+            e for e in await ledger.recent_entries(s) if e.kind == "debt"
+        ]  # not offered for cancelling
+        assert [e.kind for e in await ledger.recent_entries(s)] == ["sale"]
+
+
+async def test_return_payment_can_only_be_cancelled_with_its_return(sm: SM) -> None:
+    w = await _world(sm)
+    debt = await _debt(sm, w, [ItemInput(w.cats["ko'ylak"].id, 1, 300_000)])
+    [item] = await _item_ids(sm, "debt", debt.debt_id)
+    ret, _ = await _return(sm, w, "debt", debt.debt_id, {item.id: 1})
+    with pytest.raises(ledger.LedgerError):
+        async with uow(sm, actor_id=w.staff.id) as s:
+            await ledger.cancel_payment(s, w.staff, ret.return_payment_id or 0)
+    assert await _owed(sm, w) == 0  # untouched
+
+
+async def test_returning_the_same_customerless_sale_twice_in_parallel(sm: SM) -> None:
+    """Two staff return the same cash sale at the same moment: only one succeeds (source row is locked)."""
+    import asyncio
+
+    w = await _world(sm)
+    sale = await _sell(sm, w, [ItemInput(w.cats["ko'ylak"].id, 1, 100_000)])
+    [item] = await _item_ids(sm, "sale", sale.sale_id)
+    results = await asyncio.gather(
+        _return(sm, w, "sale", sale.sale_id, {item.id: 1}),
+        _return(sm, w, "sale", sale.sale_id, {item.id: 1}),
+        return_exceptions=True,
+    )
+    assert sum(not isinstance(r, BaseException) for r in results) == 1
+    assert await _qty(sm, w, "ko'ylak") == 0  # sold 1, returned 1 — once
+
+
+async def test_customerless_search_never_shows_other_customers_purchases(sm: SM) -> None:
+    w = await _world(sm)
+    await _sell(sm, w, [ItemInput(w.cats["ko'ylak"].id, 1, 100_000)], customer=w.customer)
+    anon = await _sell(sm, w, [ItemInput(w.cats["ko'ylak"].id, 1, 120_000)])
+    async with read_session(sm) as s:
+        found = await returns.returnable_sources(
+            s, customer_id=None, category_id=w.cats["ko'ylak"].id
+        )
+    assert [(v.type, v.id) for v in found] == [("sale", anon.sale_id)]
