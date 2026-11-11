@@ -17,7 +17,7 @@ import structlog
 from aiogram import Bot, F, Router
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import BufferedInputFile, CallbackQuery, Message
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -226,7 +226,13 @@ async def _run_and_reply(
     for out, _call in zip(outcomes, calls, strict=False):
         if out.customer_id is not None:
             new_last = out.customer_id
-        if out.card is not None:
+        if out.document is not None:
+            doc_name, doc_bytes = out.document
+            await msg.answer_document(
+                BufferedInputFile(doc_bytes, filename=doc_name), caption=out.text
+            )
+            summary.append("fayl yuborildi")
+        elif out.card is not None:
             await msg.answer(out.text or "", reply_markup=kb_common.confirm(out.card.key))
             summary.append("karta ko'rsatildi")
         elif out.question is not None:

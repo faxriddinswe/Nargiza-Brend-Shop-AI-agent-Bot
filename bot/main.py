@@ -26,6 +26,7 @@ from bot.handlers.staff import ledger as staff_ledger
 from bot.handlers.staff import menu as staff_menu
 from bot.logging_setup import safe_frames, setup_logging
 from bot.middlewares.auth import UserMiddleware
+from bot.scheduler.jobs import setup_scheduler
 from bot.services import users as users_svc
 from bot.texts import uz_latn as t
 
@@ -112,12 +113,15 @@ async def main() -> None:
         log.warning("admins_synced", promoted=len(promoted), demoted=len(demoted))
 
     bot = Bot(token=settings.bot_token.get_secret_value())
+    scheduler = setup_scheduler(bot, dp["sm"], settings)
+    scheduler.start()
     try:
         me = await bot.get_me()
         await bot.set_my_commands([BotCommand(command="start", description=t.CMD_START)])
         log.info("bot_ready", username=me.username)
         await dp.start_polling(bot)
     finally:
+        scheduler.shutdown(wait=False)
         await bot.session.close()
         await engine.dispose()
 

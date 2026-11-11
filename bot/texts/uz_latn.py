@@ -943,3 +943,120 @@ def customer_return_notice(name: str, section: str, reduction: int, refund: int,
         parts.append(f"Sizga {money(refund)} naqd qaytarildi.")
     parts.append("Rahmat!")
     return "\n".join(parts)
+
+
+# ============================================================ Stage 6: reports
+AI_PERIOD_QUESTION: Final = (
+    "Qaysi davr uchun? Masalan: bugun, bu hafta, o'tgan oy, mart, 1–15 noyabr."
+)
+NO_PAYMENTS: Final = "Bu davrda to'lov bo'lmagan."
+EXCEL_CAPTION: Final = "📎 Excel fayl tayyor"
+
+
+def _line(label: str, value: int, extra: str = "") -> str:
+    return f"{label}: {money(value)}{extra}"
+
+
+def report_text(r: object, *, daily_note: bool = False) -> str:
+    """Sections are printed one after another and NEVER summed together (BR-025)."""
+    from bot.services.reports import PeriodReport
+
+    assert isinstance(r, PeriodReport)  # noqa: S101 — documents the argument type without a circular import
+    p = r.period
+    when = (
+        format_date(p.start)
+        if p.start == p.end
+        else f"{format_date(p.start)} – {format_date(p.end)}"
+    )
+    out = [f"📊 Hisobot — {p.label} ({when})"]
+    for code, s in r.sections.items():
+        out += ["", f"📂 {SECTION_NAMES[code]}"]
+        if s.turnover == 0 and not (s.payments_cash or s.write_offs or s.returns_count):
+            out.append("Harakat bo'lmagan")
+            continue
+        out.append(_line("🛍 Savdo", s.sales_total, f" ({s.sales_count} ta)"))
+        if s.sales_total:
+            out.append("   " + _line("💵 naqd tushgan", s.sales_cash))
+            if s.sales_on_credit:
+                out.append("   " + _line("📝 nasiyaga", s.sales_on_credit))
+            if s.discount_total:
+                out.append("   " + _line("🏷 chegirma", s.discount_total))
+        if s.credit_goods_total:
+            out.append(
+                _line(
+                    "📝 To'liq nasiya (tovar)",
+                    s.credit_goods_total,
+                    f" ({s.credit_goods_count} ta)",
+                )
+            )
+        if s.payments_cash:
+            out.append(_line("💵 Qarz to'lovlari", s.payments_cash))
+        if s.write_offs:
+            out.append(_line("🤝 Kechilgan qarz", s.write_offs))
+        if s.returns_count:
+            out.append(_line("↩️ Qaytarilgan tovar", s.returns_value, f" ({s.returns_count} ta)"))
+            if s.returns_debt_reduction:
+                out.append("   " + _line("qarzdan ayirilgan", s.returns_debt_reduction))
+            if s.returns_cash_refund:
+                out.append("   " + _line("naqd qaytarilgan", s.returns_cash_refund))
+        out.append(_line("💰 Kassaga kirdi (sof)", s.net_cash))
+        if s.debt_given:
+            out.append(_line("📒 Yangi qarz berildi", s.debt_given))
+        if s.categories:
+            out.append("Tovar turlari:")
+            out += [
+                f"  • {c.name.capitalize()}: {c.quantity} ta — {money(c.amount)}"
+                for c in s.categories[:8]
+            ]
+    out += ["", f"👥 Yangi mijozlar: {r.new_customers}"]
+    if daily_note:
+        out += [
+            "",
+            "🧮 Kassadagi pulni shu hisob bilan solishtiring:",
+            *[f"• {SECTION_NAMES[c]}: {money(s.net_cash)}" for c, s in r.sections.items()],
+        ]
+    return "\n".join(out)
+
+
+def compare_text(c: object) -> str:
+    from bot.services.reports import Comparison
+
+    assert isinstance(c, Comparison)  # noqa: S101
+    out = [f"⚖️ Solishtirish: {c.a.period.label} ↔ {c.b.period.label}"]
+    for code in c.a.sections:
+        out += ["", f"📂 {SECTION_NAMES[code]}"]
+        for label, d in (
+            ("🛍 Savdo (tovar)", c.turnover(code)),
+            ("💵 Kassaga kirim", c.cash_in(code)),
+            ("📒 Yangi qarz", c.debt_given(code)),
+        ):
+            pct = f" ({d.percent})" if d.percent else ""
+            sign = "+" if d.diff > 0 else ("−" if d.diff < 0 else "")
+            out.append(f"{label}: {money(d.a)} → {money(d.b)}  [{sign}{money(abs(d.diff))}{pct}]")
+    return "\n".join(out)
+
+
+def payments_list(rows: list[tuple[date, str, str, int, str]], label: str) -> str:
+    """rows: (date, customer, section code, amount, kind)."""
+    out = [f"💵 To'lovlar — {label}", ""]
+    total: dict[str, int] = {}
+    for when, who, code, amount, kind in rows[:30]:
+        mark = "" if kind == "payment" else " (kechildi)"
+        out.append(f"• {format_date(when)} · {who} — {SECTION_NAMES[code]}: {money(amount)}{mark}")
+        if kind == "payment":
+            total[code] = total.get(code, 0) + amount
+    if len(rows) > 30:
+        out.append(more_debts(len(rows) - 30))
+    out += ["", *[f"Jami {SECTION_NAMES[c]}: {money(v)}" for c, v in total.items()]]
+    return "\n".join(out)
+
+
+def daily_report_title() -> str:
+    return "🕗 Kunlik hisobot"
+
+
+def monthly_report_extra() -> str:
+    return "\n\n📦 Oy tugadi — ombor sanog'ini o'tkazing (misol: «ko'ylak 45 ta, yubka 30 ta»)."
+
+
+REPORT_HINT: Final = "\n\n💡 Boshqa davr uchun yozing yoki ayting: «o'tgan oy hisoboti», «bu oy o'tgan oydan ko'pmi», «Excelga ber»."

@@ -71,7 +71,7 @@ exclude = ["migrations/"]
 files = ["bot", "tests", "scripts"]
 
 [[tool.mypy.overrides]]
-module = ["testcontainers.*", "apscheduler.*", "asyncpg.*"]
+module = ["testcontainers.*", "apscheduler.*", "asyncpg.*", "openpyxl.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

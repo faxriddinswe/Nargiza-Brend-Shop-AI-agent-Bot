@@ -26,10 +26,10 @@ from bot.ai import tools
 from bot.ai.base import ToolCall
 from bot.db.models import CategorySynonym, Customer, PaymentKind, Role, User
 from bot.services import customers as cust
-from bot.services import ledger
+from bot.services import ledger, reports
 from bot.services.allocation import DebtNotOpenError, NothingToPayError, OverpaymentError
 from bot.texts import uz_latn as t
-from bot.utils.dates import format_date, parse_due_text
+from bot.utils.dates import Period, format_date, parse_due_text, parse_period
 from bot.utils.money import AmountParseError, format_amount, parse_amount
 from bot.utils.phone import InvalidPhoneError, normalize_phone
 from bot.utils.translit import search_key
@@ -68,6 +68,7 @@ class Outcome:
     resume: ToolCall | None = None  # re-run with the chosen patch
     customer_id: int | None = None  # becomes the conversation's "last customer" (BR-110)
     heard: str | None = None
+    document: tuple[str, bytes] | None = None  # (file name, content) to send as a file
 
 
 @dataclass(frozen=True, slots=True)
@@ -484,6 +485,87 @@ async def _register_return(
     return Outcome(text=_with_assumed(card.text, assumed), card=card, customer_id=cid)
 
 
+async def _period_or_ask(text: str | None, ctx: Context) -> Period | Outcome:
+    period = parse_period(text or "bugun", ctx.today)
+    return period if period is not None else Outcome(question=t.AI_PERIOD_QUESTION)
+
+
+async def _sales_report(
+    session: AsyncSession,
+    actor: User,
+    call: ToolCall,
+    args: tools.GetSalesReport,
+    fix: dict[str, Any],
+    ctx: Context,
+) -> Outcome:
+    period = await _period_or_ask(args.period_text, ctx)
+    if isinstance(period, Outcome):
+        return period
+    report = await reports.sales_report(session, period, section_code=args.section)
+    return Outcome(text=t.report_text(report))
+
+
+async def _compare(
+    session: AsyncSession,
+    actor: User,
+    call: ToolCall,
+    args: tools.ComparePeriods,
+    fix: dict[str, Any],
+    ctx: Context,
+) -> Outcome:
+    a = await _period_or_ask(args.period_a_text, ctx)
+    b = await _period_or_ask(args.period_b_text, ctx)
+    if isinstance(a, Outcome) or isinstance(b, Outcome):
+        return Outcome(question=t.AI_PERIOD_QUESTION)
+    return Outcome(text=t.compare_text(await reports.compare_periods(session, a, b)))
+
+
+async def _payments(
+    session: AsyncSession,
+    actor: User,
+    call: ToolCall,
+    args: tools.ListPayments,
+    fix: dict[str, Any],
+    ctx: Context,
+) -> Outcome:
+    period = await _period_or_ask(args.period_text, ctx)
+    if isinstance(period, Outcome):
+        return period
+    rows = await reports.payments_in(session, period, section_code=args.section)
+    if not rows:
+        return Outcome(text=t.NO_PAYMENTS)
+    return Outcome(text=t.payments_list(rows, period.label))
+
+
+async def _export(
+    session: AsyncSession,
+    actor: User,
+    call: ToolCall,
+    args: tools.ExportExcel,
+    fix: dict[str, Any],
+    ctx: Context,
+) -> Outcome:
+    from bot.services import inventory
+    from bot.services.excel_export import debtors_workbook, sales_workbook, stock_workbook
+
+    stamp = ctx.today.isoformat()
+    if args.kind == "sales":
+        period = await _period_or_ask(args.period_text, ctx)
+        if isinstance(period, Outcome):
+            return period
+        data = sales_workbook(await reports.sales_report(session, period))
+        return Outcome(
+            text=t.EXCEL_CAPTION, document=(f"hisobot_{period.start}_{period.end}.xlsx", data)
+        )
+    if args.kind == "debtors":
+        rows = await ledger.debtors(session)
+        phones = {c.id: c.phone for c in (await session.execute(select(Customer))).scalars()}
+        data = debtors_workbook(rows, phones, await ledger.section_codes(session))
+        return Outcome(text=t.EXCEL_CAPTION, document=(f"qarzdorlar_{stamp}.xlsx", data))
+    data = stock_workbook(await inventory.levels(session))
+    return Outcome(text=t.EXCEL_CAPTION, document=(f"ombor_{stamp}.xlsx", data))
+
+
 async def _stock_in(
     session: AsyncSession,
     actor: User,
@@ -865,6 +947,14 @@ async def run_call(session: AsyncSession, actor: User, call: ToolCall, ctx: Cont
         outcome = await _add_sale(session, actor, call, args, fix, ctx)
     elif isinstance(args, tools.RegisterReturn):
         outcome = await _register_return(session, actor, call, args, fix, ctx)
+    elif isinstance(args, tools.GetSalesReport):
+        outcome = await _sales_report(session, actor, call, args, fix, ctx)
+    elif isinstance(args, tools.ComparePeriods):
+        outcome = await _compare(session, actor, call, args, fix, ctx)
+    elif isinstance(args, tools.ListPayments):
+        outcome = await _payments(session, actor, call, args, fix, ctx)
+    elif isinstance(args, tools.ExportExcel):
+        outcome = await _export(session, actor, call, args, fix, ctx)
     elif isinstance(args, tools.AddStockIn):
         outcome = await _stock_in(session, actor, call, args, fix, ctx)
     elif isinstance(args, tools.StockCount):

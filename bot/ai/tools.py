@@ -205,6 +205,47 @@ class RegisterReturn(_Args):
     heard: Annotated[str | None, Field(max_length=300)] = None
 
 
+class GetSalesReport(_Args):
+    period_text: Annotated[
+        str | None,
+        Field(
+            max_length=40,
+            description="Davr aytilganidek: 'bugun', 'bu hafta', 'o'tgan oy', 'mart', '1-15 noyabr'. Aytilmasa BO'SH",
+        ),
+    ] = None
+    section: Annotated[Section | None, Field()] = None
+    heard: Annotated[str | None, Field(max_length=300)] = None
+
+
+class ComparePeriods(_Args):
+    period_a_text: Annotated[
+        str, Field(min_length=1, max_length=40, description="Birinchi davr ('o'tgan oy')")
+    ]
+    period_b_text: Annotated[
+        str, Field(min_length=1, max_length=40, description="Ikkinchi davr ('bu oy')")
+    ]
+    heard: Annotated[str | None, Field(max_length=300)] = None
+
+
+class ListPayments(_Args):
+    period_text: Annotated[
+        str | None, Field(max_length=40, description="'bugun kim to'ladi' → 'bugun'")
+    ] = None
+    section: Annotated[Section | None, Field()] = None
+    heard: Annotated[str | None, Field(max_length=300)] = None
+
+
+class ExportExcel(_Args):
+    kind: Annotated[
+        Literal["sales", "debtors", "stock"],
+        Field(description="sales — savdo hisoboti; debtors — qarzdorlar; stock — ombor"),
+    ]
+    period_text: Annotated[
+        str | None, Field(max_length=40, description="Faqat sales uchun davr")
+    ] = None
+    heard: Annotated[str | None, Field(max_length=300)] = None
+
+
 class CreateCustomer(_Args):
     name: Annotated[str, Field(min_length=2, max_length=40)]
     form: Annotated[Literal["opa", "aka"], Field(description="Murojaat: ayol — opa, erkak — aka")]
@@ -302,6 +343,18 @@ REGISTRY: dict[str, tuple[type[_Args], str, bool]] = {
         "Tovar qaytarildi yoki almashtirildi: 'qaytardi', 'o'rniga ... oldi'.",
         True,
     ),
+    "get_sales_report": (
+        GetSalesReport,
+        "Savdo hisoboti: 'bugun qancha savdo', 'bu oy nima sotildi', 'qancha qarz berildi va qaytdi'.",
+        False,
+    ),
+    "compare_periods": (
+        ComparePeriods,
+        "Ikki davrni solishtirish: 'bu oy o'tgan oydan ko'pmi'.",
+        False,
+    ),
+    "list_payments": (ListPayments, "Kim to'ladi: 'bugun kim to'ladi'.", False),
+    "export_excel": (ExportExcel, "Excel fayl: 'Excelga ber', 'qarzdorlar Excel'.", False),
     "create_customer": (CreateCustomer, "Yangi mijoz qo'shish.", True),
     "delete_customer": (DeleteCustomer, "Mijozni ro'yxatdan o'chirish.", True),
     "cancel_last_entry": (CancelLast, "Oxirgi yozuvni bekor qilish.", True),
