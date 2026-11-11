@@ -13,6 +13,8 @@ RUN groupadd --system app && useradd --system --gid app --home /app app
 
 COPY pyproject.toml README.md ./
 COPY bot ./bot
+COPY alembic.ini ./
+COPY migrations ./migrations
 RUN pip install .
 
 USER app

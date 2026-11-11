@@ -42,6 +42,8 @@ class Settings(BaseSettings):
     bot_token: SecretStr
     # NoDecode: "123,456" ko'rinishini JSON deb emas, oddiy matn deb o'qish uchun
     admin_telegram_ids: Annotated[list[int], NoDecode] = []
+    # BR-013: asosiy yo'l — admin telefon raqami (kontakt ulashganda tanilinadi)
+    admin_phones: Annotated[frozenset[str], NoDecode] = frozenset()
 
     # PostgreSQL
     postgres_user: str = "nargiza"
@@ -67,6 +69,15 @@ class Settings(BaseSettings):
     def _split_ids(cls, value: object) -> object:
         if isinstance(value, str):
             return [int(part) for part in value.replace(" ", "").split(",") if part]
+        return value
+
+    @field_validator("admin_phones", mode="before")
+    @classmethod
+    def _normalize_admin_phones(cls, value: object) -> object:
+        from bot.utils.phone import normalize_phone
+
+        if isinstance(value, str):
+            return frozenset(normalize_phone(p) for p in value.split(",") if p.strip())
         return value
 
     @field_validator("bot_token", "postgres_password")
