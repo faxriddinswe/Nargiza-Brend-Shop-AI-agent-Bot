@@ -33,6 +33,8 @@ dev = [
     "ruff==0.17.4",
     "mypy==2.4.1",
     "pre-commit==4.7.0",
+    "pyyaml==6.0.3",
+    "types-pyyaml==6.0.12.20261030",
 ]
 
 [tool.setuptools.packages.find]
@@ -66,6 +68,7 @@ python_version = "3.12"
 strict = true
 plugins = ["pydantic.mypy"]
 exclude = ["migrations/"]
+files = ["bot", "tests", "scripts"]
 
 [[tool.mypy.overrides]]
 module = ["testcontainers.*", "apscheduler.*", "asyncpg.*"]

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.0] — Stage 3/4 (AI agent: text and voice) — 2026-11-11
+- `ai/` package: provider-neutral `AIProvider`, 12 Pydantic tool schemas, system prompt, `GeminiProvider`
+  (google-genai; audio as `audio/ogg`; function calling forced, automatic calling disabled).
+- Dispatcher: resolves customers, products (synonyms, Cyrillic, suffixes, light fuzziness), sections, amounts and
+  due dates in code; asks with buttons when anything is unclear; creates the same confirmation cards as the
+  button flows; permissions checked in code.
+- Staff can write or speak freely; conversation memory (last customer, last 3 exchanges, 15 min).
+- Read questions: customer debt, search, debtors list, overdue list.
+- `ai_calls` log (tokens, latency, estimated cost; no personal data); admin alert when the AI is down.
+- Evaluation set (66 phrases) and `scripts/run_eval.py`.
+- 348 automated tests (fake model + exact Gemini request shape).
+
 ## [0.2.0] — Stage 2 (debt ledger and customers, button-driven) — 2026-11-11
 - Database: `debts`, `debt_items`, `payments`, `payment_allocations` with composite foreign keys (section and
   customer isolation), immutable ledger rows (corrections = cancel + new record), deferred constraint triggers

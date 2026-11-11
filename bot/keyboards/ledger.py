@@ -54,6 +54,10 @@ class RecentCb(CallbackData, prefix="rc"):
     id: int
 
 
+class AiChoiceCb(CallbackData, prefix="ai"):
+    i: int
+
+
 class RestoreCb(CallbackData, prefix="rs"):
     id: int
 
@@ -189,4 +193,11 @@ def recent(rows: Sequence[tuple[str, int, str]]) -> InlineKeyboardMarkup:
 def restore_list(rows: Sequence[tuple[int, str]]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[[_btn(label, RestoreCb(id=cid))] for cid, label in rows]
+    )
+
+
+def ai_choices(labels: Sequence[str]) -> InlineKeyboardMarkup:
+    """One button per answer the AI offers (customer, section, debt, due date, product type)."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[_btn(label[:60], AiChoiceCb(i=i))] for i, label in enumerate(labels)]
     )

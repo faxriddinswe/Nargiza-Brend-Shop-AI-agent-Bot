@@ -1,7 +1,7 @@
 # Xodimlar uchun qo'llanma (qarz daftari)
 
-> Bu qo'llanma oila a'zolari uchun — oddiy tilda. Bot hozir **tugmalar** bilan ishlaydi.
-> Keyingi bosqichda shunchaki gapirasiz yoki yozasiz ("Umida 100 ming berdi"), bot o'zi tushunadi.
+> Bu qo'llanma oila a'zolari uchun — oddiy tilda.
+> Botga **tugmalar** bilan ham, **oddiy gap bilan ham** (yozib yoki ovozli xabar yuborib) ishlash mumkin.
 
 ## Bosh menyu (pastdagi tugmalar)
 
@@ -56,3 +56,30 @@ Mijoz kartasida **🗑 O'chirish**. Qarzi bo'lsa, bot ogohlantiradi. Mijoz bazad
 - Karta 30 daqiqadan keyin eskiradi — qaytadan boshlang.
 - Boshqa bo'limga yozsangiz (masalan, Nodira opa ichki kiyim qarzi yozsa), o'sha bo'lim egasiga xabar boradi.
 - Summani aniq ayting. "350" desangiz bot 350 000 so'm deb tushunadi va kartada ko'rsatadi. "1500" kabi noaniq bo'lsa, qayta so'raydi.
+
+
+## 🎤 Oddiy gap va ovozli xabar bilan ishlash
+
+Tugma bosmasdan, shunchaki yozing yoki **mikrofon tugmasini bosib gapiring**. Misollar:
+
+| Aytasiz | Bot nima qiladi |
+|---|---|
+| «Umida 100 ming berdi» | To'lov kartasini ko'rsatadi |
+| «Jasur akaga shim 450 ming nasiya, 2 haftaga» | Qarz kartasini ko'rsatadi |
+| «Umidaning qarzi qancha?» | Qarzini darhol aytadi |
+| «Kimlarning qarzi bor?» / «Muddati o'tganlar kim?» | Ro'yxat beradi |
+| «Umida opaning qarzini kechdim» | Kechish kartasini ko'rsatadi |
+| «Oxirgi yozuvni bekor qil» | Bekor qilish kartasini ko'rsatadi |
+| «Yangi mijoz: Laylo opa, 90 123 45 67» | Yangi mijoz kartasini ko'rsatadi |
+| «Unga yana 20 ming qo'sh» | Oxirgi gaplashilgan mijozni eslaydi (15 daqiqagacha) |
+
+Summani qanday aytsangiz ham bo'ladi: «350 ming», «uch yuz ellik ming», «yarim million», «1,5 million».
+
+**Bot tushunmasa, taxmin qilmaydi — so'raydi:**
+- bir xil ismli mijoz bo'lsa — tugmalar bilan «qaysi biri?» deb so'raydi;
+- ikki bo'limda qarzi bo'lsa — «qaysi bo'lim?»;
+- muddat aytilmasa — «1 hafta / 2 hafta / 1 oy / muddatsiz»;
+- tovar yoki summani tushunmasa — qisqa savol beradi. Javobni yozing yoki ovoz bilan ayting.
+
+**Muhim:** bot hech narsani o'zi yozmaydi. Har safar kartani ko'rsatadi — tekshirib **✅ Tasdiqlash** bosasiz.
+Ovozli xabar 1,5 daqiqagacha bo'lsin. Bot «hozir tinglay olmayapman» desa, pastdagi tugmalardan foydalaning.

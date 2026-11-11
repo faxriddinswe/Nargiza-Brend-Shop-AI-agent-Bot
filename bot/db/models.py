@@ -431,3 +431,28 @@ class PaymentAllocation(Base):
     section_id: Mapped[int] = mapped_column(BigInteger)
     customer_id: Mapped[int] = mapped_column(BigInteger)
     amount: Mapped[int] = mapped_column(BigInteger)
+
+
+class AiCall(Base):
+    """One AI request: sizes and timings only — never the text, audio or any customer data."""
+
+    __tablename__ = "ai_calls"
+    __table_args__ = (
+        CheckConstraint("kind IN ('text', 'voice')", name="kind"),
+        Index("ix_ai_calls_created", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    kind: Mapped[str] = mapped_column(Text)
+    provider: Mapped[str] = mapped_column(Text)
+    model: Mapped[str] = mapped_column(Text)
+    prompt_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)
+    total_tokens: Mapped[int | None] = mapped_column(Integer)
+    cost_micro_usd: Mapped[int | None] = mapped_column(BigInteger)
+    latency_ms: Mapped[int] = mapped_column(Integer)
+    tools: Mapped[str | None] = mapped_column(Text)
+    success: Mapped[bool] = mapped_column(Boolean)
+    error_type: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())

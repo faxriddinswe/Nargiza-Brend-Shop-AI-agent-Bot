@@ -1,0 +1,148 @@
+# Evaluation set for the AI agent (Uzbek: Latin + Cyrillic, dialect, numbers in words, mixed requests).
+# Fake names only. Run against the real model:  .venv/bin/python scripts/run_eval.py
+#
+# expect: list of tool calls in order. Checked fields (all optional except tool):
+#   customer  – substring of the customer words (compared after Latin/lowercase normalisation)
+#   amount    – integer so'm; compared AFTER our own parser reads the model's amount_text
+#   section   – shop | lingerie
+#   item      – product type name; the model's words must resolve to it in our category resolver
+#   items     – [{cat, qty, price}] for debts
+#   due       – "none" | "1w" | "2w" | "1m" | "date" | "unset" (model must leave it empty)
+#   all       – write_off all=true
+# Tools that must not guess are expected as `ask` when information is missing.
+
+- say: "Umida opa 100 ming berdi"
+  expect: [{tool: add_payment, customer: umida, amount: 100000}]
+- say: "Umida 100 ming berdi"
+  expect: [{tool: add_payment, customer: umida, amount: 100000}]
+- say: "Umida 100 mingni to'ladi"
+  expect: [{tool: add_payment, customer: umida, amount: 100000}]
+- say: "Умида 100 минг берди"
+  expect: [{tool: add_payment, customer: umida, amount: 100000}]
+- say: "Jasur aka uch yuz ellik ming berdi"
+  expect: [{tool: add_payment, customer: jasur, amount: 350000}]
+- say: "Шахло опа ярим миллион тўлади"
+  expect: [{tool: add_payment, customer: shahlo, amount: 500000}]
+- say: "Dilnoza bir yarim million berdi"
+  expect: [{tool: add_payment, customer: dilnoza, amount: 1500000}]
+- say: "Madina 1.5 mln to'ladi"
+  expect: [{tool: add_payment, customer: madina, amount: 1500000}]
+- say: "Zebo opa ikki yuz ming tushirdi"
+  expect: [{tool: add_payment, customer: zebo, amount: 200000}]
+- say: "Nilufar 50 ming bergan edi, yozib qo'y"
+  expect: [{tool: add_payment, customer: nilufar, amount: 50000}]
+- say: "Umida oyoq kiyim qarzidan 80 ming ayir"
+  expect: [{tool: add_payment, customer: umida, amount: 80000, item: "oyoq kiyim"}]
+- say: "Umida tuflining qarzidan 100 ming to'ladi"
+  expect: [{tool: add_payment, customer: umida, amount: 100000, item: "oyoq kiyim"}]
+- say: "Madina ichki kiyim qarziga 60 ming berdi"
+  expect: [{tool: add_payment, customer: madina, amount: 60000, section: lingerie}]
+- say: "Umida opaga ko'ylak 350 ming qarzga"
+  expect: [{tool: add_debt, customer: umida, items: [{cat: "ko'ylak", qty: 1, price: 350000}], due: unset}]
+- say: "Umidaga 2 ta ko'ylak nasiya, bittasi 175 ming, 2 haftaga"
+  expect: [{tool: add_debt, customer: umida, items: [{cat: "ko'ylak", qty: 2, price: 175000}], due: 2w}]
+- say: "Jasur akaga shim 450 ming nasiyaga, muddatsiz"
+  expect: [{tool: add_debt, customer: jasur, items: [{cat: shim, qty: 1, price: 450000}], due: none}]
+- say: "Шахло опага кўйлак 300 минг қарзга, бир ойга"
+  expect: [{tool: add_debt, customer: shahlo, items: [{cat: "ko'ylak", qty: 1, price: 300000}], due: 1m}]
+- say: "Dilnozaga yubka 200 ming, kofta 250 ming nasiyaga"
+  expect: [{tool: add_debt, customer: dilnoza, items: [{cat: yubka, qty: 1, price: 200000}, {cat: kofta, qty: 1, price: 250000}], due: unset}]
+- say: "Madinaga ichki kiyim 3 ta, bittasi 40 ming, qarz"
+  expect: [{tool: add_debt, customer: madina, items: [{cat: "ichki kiyim", qty: 3, price: 40000}], due: unset}]
+- say: "Zeboga ko'ylak 400 ming, ichki kiyim 80 ming nasiya, 25-dekabrgacha"
+  expect: [{tool: add_debt, customer: zebo, items: [{cat: "ko'ylak", qty: 1, price: 400000}, {cat: "ichki kiyim", qty: 1, price: 80000}], due: date}]
+- say: "Nilufarga tufli 280 ming qarzga yozing"
+  expect: [{tool: add_debt, customer: nilufar, items: [{cat: "oyoq kiyim", qty: 1, price: 280000}], due: unset}]
+- say: "Laylo opaga sumka uch yuz ming nasiyaga"
+  expect: [{tool: add_debt, customer: laylo, items: [{cat: sumka, qty: 1, price: 300000}], due: unset}]
+- say: "Gulnoraga kurtka 700 ming nasiya, bir haftaga"
+  expect: [{tool: add_debt, customer: gulnora, items: [{cat: "kurtka/palto", qty: 1, price: 700000}], due: 1w}]
+- say: "Sevaraga pijama 150 ming qarz"
+  expect: [{tool: add_debt, customer: sevara, items: [{cat: pijama, qty: 1, price: 150000}], due: unset}]
+- say: "Barnoga paypoq 5 ta, 15 mingdan, nasiya"
+  expect: [{tool: add_debt, customer: barno, items: [{cat: paypoq, qty: 5, price: 15000}], due: unset}]
+- say: "Umida opaning qarzini kechdim, hammasini"
+  expect: [{tool: write_off, customer: umida, all: true}]
+- say: "Jasur akaning 50 ming qarzini kechib yubordim"
+  expect: [{tool: write_off, customer: jasur, amount: 50000}]
+- say: "Madinadan 20 mingini kechamiz"
+  expect: [{tool: write_off, customer: madina, amount: 20000}]
+- say: "Umidaning qarzi qancha?"
+  expect: [{tool: get_customer_debt, customer: umida}]
+- say: "Jasur akaning qarzini ayt"
+  expect: [{tool: get_customer_debt, customer: jasur}]
+- say: "Умиданинг қарзи қанча?"
+  expect: [{tool: get_customer_debt, customer: umida}]
+- say: "Shahlo opa nima olgan edi?"
+  expect: [{tool: get_customer_debt, customer: shahlo}]
+- say: "Kimlarning qarzi bor?"
+  expect: [{tool: list_debtors}]
+- say: "Jami qarzdorlar ro'yxatini ber"
+  expect: [{tool: list_debtors}]
+- say: "Ichki kiyim bo'limida kim qarzdor?"
+  expect: [{tool: list_debtors, section: lingerie}]
+- say: "Kimlar qarzdor, kattasidan"
+  expect: [{tool: list_debtors}]
+- say: "Muddati o'tganlar kim?"
+  expect: [{tool: list_overdue}]
+- say: "Kimning muddati o'tib ketgan?"
+  expect: [{tool: list_overdue}]
+- say: "Qaysi mijozlar to'lamayapti, muddati o'tgan"
+  expect: [{tool: list_overdue}]
+- say: "Oxirgi yozuvni bekor qil"
+  expect: [{tool: cancel_last_entry}]
+- say: "Xato yozdim, bekor qiling"
+  expect: [{tool: cancel_last_entry}]
+- say: "Umidaning oxirgi yozuvini bekor qil"
+  expect: [{tool: cancel_last_entry, customer: umida}]
+- say: "Yangi mijoz: Laylo opa, telefoni 90 123 45 67"
+  expect: [{tool: create_customer, customer: laylo}]
+- say: "Mijoz qo'sh: Anvar aka, 91 765 43 21, Yunusobodlik"
+  expect: [{tool: create_customer, customer: anvar}]
+- say: "Yangi mijoz Gulchehra opa, raqami yo'q"
+  expect: [{tool: create_customer, customer: gulchehra}]
+- say: "Umidani ro'yxatdan o'chir"
+  expect: [{tool: delete_customer, customer: umida}]
+- say: "Shahlo opani o'chirib tashla"
+  expect: [{tool: delete_customer, customer: shahlo}]
+- say: "Umida degan mijozni top"
+  expect: [{tool: search_customer}]
+- say: "45 67 bilan tugaydigan mijoz kim?"
+  expect: [{tool: search_customer}]
+- say: "Shahlo opaning qizi kim edi?"
+  expect: [{tool: search_customer}]
+# --- must ASK, never guess
+- say: "Umida pul berdi"
+  expect: [{tool: ask}]
+- say: "100 ming berdi"
+  expect: [{tool: ask}]
+- say: "Qarz yozing"
+  expect: [{tool: ask}]
+- say: "Jasurga qarz yozing"
+  expect: [{tool: ask}]
+- say: "Madinaga qarz, narxini bilmayman"
+  expect: [{tool: ask}]
+- say: "Kechdim"
+  expect: [{tool: ask}]
+- say: "Bekor qil"
+  expect: [{tool: cancel_last_entry}]
+- say: "O'sha odamning qarzi qancha?"
+  expect: [{tool: ask}]
+# --- not built yet → polite refusal (`say`)
+- say: "Bugun qancha savdo bo'ldi?"
+  expect: [{tool: say}]
+- say: "Ko'ylak sotildi 450 ming naqd"
+  expect: [{tool: say}]
+- say: "Nechta yubka qoldi?"
+  expect: [{tool: say}]
+- say: "20 ta yubka keldi"
+  expect: [{tool: say}]
+- say: "Assalomu alaykum"
+  expect: [{tool: say}]
+- say: "Rahmat"
+  expect: [{tool: say}]
+# --- several requests in one message
+- say: "Umida 100 ming berdi, Jasur akaga shim 450 ming qarz, muddatsiz"
+  expect: [{tool: add_payment, customer: umida, amount: 100000}, {tool: add_debt, customer: jasur, items: [{cat: shim, qty: 1, price: 450000}], due: none}]
+- say: "Madina 50 ming berdi va Zebo opaning qarzi qancha?"
+  expect: [{tool: add_payment, customer: madina, amount: 50000}, {tool: get_customer_debt, customer: zebo}]

@@ -200,3 +200,25 @@ def parse_due_date(text: str, today: date) -> date | None:
     if candidate < today or candidate > today + timedelta(days=366 * 2):
         return None
     return candidate
+
+
+_DUE_WORDS = {
+    "1 hafta": "1w", "bir hafta": "1w", "hafta": "1w", "1hafta": "1w",
+    "2 hafta": "2w", "ikki hafta": "2w", "2hafta": "2w",
+    "1 oy": "1m", "bir oy": "1m", "oy": "1m", "1oy": "1m",
+}  # fmt: skip
+_NO_DUE = {"muddatsiz", "muddat yoq", "muddati yoq", "yoq", "hech qachon", "none"}
+
+
+def parse_due_text(text: str, today: date) -> tuple[bool, date | None]:
+    """Spoken/typed due date → (understood, date). `(True, None)` means "no due date".
+
+    "2 hafta", "bir oy", "25-dekabr", "25.12", "muddatsiz". Not understood → (False, None): ask again.
+    """
+    key = search_key(text)
+    if key in _NO_DUE:
+        return True, None
+    if key in _DUE_WORDS:
+        return True, due_from_preset(_DUE_WORDS[key], today)
+    parsed = parse_due_date(text, today)
+    return (parsed is not None), parsed

@@ -4,8 +4,8 @@ A Telegram bot that replaces the paper debt notebook of a small family-run women
 in a Tashkent bazaar. It keeps the debt ledger, sales and stock, talks to customers, and — in later
 stages — lets the family run the shop by simply **speaking** to it in Uzbek.
 
-> **Status:** Stage 2 (debt ledger via buttons) implemented — customers, debts, payments, write-offs,
-> cancellations, notifications. The AI agent (text, then voice) is next. See the [roadmap](#roadmap).
+> **Status:** Stages 0–4 implemented — debt ledger via buttons plus an AI agent that understands free text and
+> voice messages (needs a Gemini API key). Sales, stock and reports are next. See the [roadmap](#roadmap).
 
 ---
 
@@ -29,8 +29,10 @@ stages — lets the family run the shop by simply **speaking** to it in Uzbek.
 - Uzbek-aware utilities: Cyrillic ↔ Latin search, phone normalization, amounts in words
   (*"uch yuz ellik ming"* = 350 000), periods (*"o'tgan oy"* = last month).
 
-**Planned** — debt ledger with FIFO payments, sales and stock, returns/exchanges, reports and Excel export,
-reminders and broadcasts, AI agent (text, then voice) via Gemini, import of the old paper notebook.
+- Debt ledger with FIFO payments, write-offs, cancellations and customer notifications.
+- AI agent (text and voice, Uzbek) via Gemini: understands the request, asks when unsure, never saves without a confirmation card.
+
+**Planned** — sales and stock, returns/exchanges, reports and Excel export, reminders and broadcasts, import of the old paper notebook.
 
 ## Data safety
 
@@ -134,9 +136,9 @@ The original requirements (in Uzbek) are in [NARGIZA_BREND_MASTER_PROMPT.md](NAR
 | 0 | Skeleton, tooling, CI, business rules | ✅ |
 | 1 | Database, audit, registration, roles, admin panel, encrypted backups | ✅ |
 | 2 | Debt ledger and customers (buttons): debts, FIFO payments, write-offs, cancel | ✅ (pending owner acceptance) |
-| 3 | AI agent (text) — Gemini tool calling, evaluation set | ⏳ next |
-| 4 | Voice messages | |
-| 5 | Sales, stock, returns and exchanges | |
+| 3 | AI agent (text) — Gemini tool calling, evaluation set | ✅ (eval run pending API key) |
+| 4 | Voice messages | ✅ (real-voice evaluation pending) |
+| 5 | Sales, stock, returns and exchanges | ⏳ next |
 | 6 | Reports and Excel export | |
 | 7 | Reminders and broadcasts | |
 | 8 | Import of the old paper notebook | |

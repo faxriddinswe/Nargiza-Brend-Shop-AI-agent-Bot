@@ -16,7 +16,16 @@ def test_dispatcher_builds_with_all_routers() -> None:
     )
     dp = build_dispatcher(settings, make_engine(settings.app_database_url))
     names = [r.name for r in dp.sub_routers]
-    assert names == ["admin", "confirm", "staff_ledger", "start", "staff", "customer", "fallback"]
+    assert names == [
+        "admin",
+        "confirm",
+        "staff_ledger",
+        "staff_agent",
+        "start",
+        "staff",
+        "customer",
+        "fallback",
+    ]
     # the confirmation handler must live in a router open to staff (not only admin)
     confirm = next(r for r in dp.sub_routers if r.name == "confirm")
     assert confirm.callback_query.handlers

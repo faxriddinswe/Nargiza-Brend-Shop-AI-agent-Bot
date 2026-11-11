@@ -518,3 +518,72 @@ async def last_debt_date(session: AsyncSession, customer_ids: Sequence[int]) -> 
         .group_by(Debt.customer_id)
     )
     return {cid: d for cid, d in rows.all()}
+
+
+# ---------------------------------------------------------------- lists for questions (BR-120, BR-122)
+@dataclass(frozen=True, slots=True)
+class DebtorRow:
+    customer_id: int
+    name: str
+    form: str
+    section_id: int
+    owed: int
+    next_due: date | None
+
+
+async def debtors(session: AsyncSession, *, section_id: int | None = None) -> list[DebtorRow]:
+    """Everyone who owes, biggest first. Deleted customers stay (their debt is still owed, Q-33)."""
+    paid = _paid_subquery()
+    remaining = Debt.total_amount - func.coalesce(paid.c.paid, 0)
+    q = (
+        select(
+            Debt.customer_id,
+            Customer.name,
+            Customer.address_form,
+            Debt.section_id,
+            cast(func.sum(remaining), BigInteger),
+            func.min(Debt.due_date),
+        )
+        .join(Customer, Customer.id == Debt.customer_id)
+        .outerjoin(paid, paid.c.debt_id == Debt.id)
+        .where(Debt.status == LedgerStatus.ACTIVE, remaining > 0)
+        .group_by(Debt.customer_id, Customer.name, Customer.address_form, Debt.section_id)
+        .order_by(func.sum(remaining).desc())
+    )
+    if section_id is not None:
+        q = q.where(Debt.section_id == section_id)
+    return [
+        DebtorRow(cid, name, form, sid, int(owed), due)
+        for cid, name, form, sid, owed, due in (await session.execute(q)).all()
+    ]
+
+
+@dataclass(frozen=True, slots=True)
+class OverdueRow:
+    customer_id: int
+    name: str
+    form: str
+    section_id: int
+    remaining: int
+    due_date: date
+    days_overdue: int
+
+
+async def overdue(session: AsyncSession, today: date) -> list[OverdueRow]:
+    paid = _paid_subquery()
+    remaining = Debt.total_amount - func.coalesce(paid.c.paid, 0)
+    q = (
+        select(
+            Debt.customer_id, Customer.name, Customer.address_form, Debt.section_id,
+            cast(remaining, BigInteger), Debt.due_date,
+        )
+        .join(Customer, Customer.id == Debt.customer_id)
+        .outerjoin(paid, paid.c.debt_id == Debt.id)
+        .where(Debt.status == LedgerStatus.ACTIVE, Debt.due_date < today, remaining > 0)
+        .order_by(Debt.due_date, Debt.id)
+    )  # fmt: skip
+    return [
+        OverdueRow(cid, name, form, sid, int(rem), due, (today - due).days)
+        for cid, name, form, sid, rem, due in (await session.execute(q)).all()
+        if due is not None
+    ]

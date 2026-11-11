@@ -1,26 +1,88 @@
 # AI agent
 
-> Status: skeleton. To be filled in during Stage 3 (the google-genai SDK documentation will be checked at that time).
+Staff talk to the bot in free text or **voice messages** (Uzbek, Latin or Cyrillic). The model figures out
+what they want; our code does everything else. Customers never reach the AI (buttons only).
 
-## Provider
-- `AI_PROVIDER=gemini`; the model is set via `GEMINI_MODEL` (never hard-coded).
-- `ai/base.py` defines the `AIProvider` interface; `ai/gemini.py` is the implementation; `ai/claude.py` will follow later (with separate STT for voice).
+## How a message is handled
 
-## Strict rules
-- The AI never does calculations and never decides permissions.
-- Ambiguous amount, customer or department → ask a question instead of calling a tool.
-- Arguments are validated with Pydantic; the department is re-determined in code.
-- Write tools always go through a confirmation card.
-- Every call is logged to `ai_calls` (tokens, cost, latency) without any personal data.
-- If the AI is unavailable, the staff member gets a clear message plus the button menu, and the admin is notified.
+```mermaid
+sequenceDiagram
+    participant S as Staff
+    participant H as handlers/staff/agent.py
+    participant M as Gemini (AIProvider)
+    participant D as ai/dispatcher.py
+    participant DB as services + PostgreSQL
+    S->>H: "Umida 100 ming berdi" (text or voice)
+    H->>M: system prompt + categories + last customer + history + tools
+    M-->>H: add_payment(customer_query="Umida", amount_text="100 ming")
+    H->>D: validate, resolve, plan
+    D->>DB: find customer, FIFO plan (read only)
+    alt everything is clear
+        D-->>S: confirmation card [✅][❌]
+    else something is unclear
+        D-->>S: question + buttons (customer? section? due date? product?)
+    end
+```
+
+## Rules (master §8.4) and how the code enforces them
+
+| Rule | Enforcement |
+|---|---|
+| The AI never calculates | Numbers are passed as spoken (`amount_text`, `unit_price_text`, `due_text`, `phone_text`) and parsed by `utils/money.py` / `utils/dates.py`. FIFO, balances and differences come from `services/`. |
+| The AI never decides permissions | `dispatcher.run_call` checks the role in code; every service re-checks it. |
+| The AI never guesses | Unclear customer, product, section, debt, amount, due date → a question (`ask` tool or dispatcher-generated choices). Ambiguous amounts (`1500`, `350-400 ming`, `1.500 mln`) are asked again. |
+| The AI never picks ids | Customers are found by code from the words; ids only come from buttons the user tapped. |
+| Nothing is saved without confirmation | Writes only create a `pending_actions` card; the ✅ runs the action (same path as the button flows). |
+| Section is decided in code | Product → category → section via the synonyms table; the model's words are only input. |
+| Logging without personal data | `ai_calls` stores tokens, latency, estimated cost, tool names — never text or audio. |
+| AI down → staff keep working | Friendly message, buttons stay, admins get one alert per 10 minutes. |
+
+## Provider abstraction
+
+`ai/base.py` defines `AIProvider.decide(system, text, audio, history, tools) -> AIResult`.
+`ai/gemini.py` implements it with `google-genai` (`client.aio.models.generate_content`,
+`types.Part.from_bytes(..., mime_type="audio/ogg")`, function calling forced with
+`FunctionCallingConfigMode.ANY`, automatic calling disabled). The model name comes from `GEMINI_MODEL`
+(never hard-coded). Another provider (Claude + separate speech-to-text) can be added as `ai/claude.py`
+and selected with `AI_PROVIDER`.
 
 ## Tools
-_To be finalised in Stage 3 together with `architect` (master prompt, section 8.3)._
 
-## System prompt
-_Stage 3._
+| Tool | Kind | Meaning |
+|---|---|---|
+| `add_debt` | write | Debt for a customer (items: product, quantity, unit price; optional due date) |
+| `add_payment` | write | Customer paid; optional section or a specific debt ("oyoq kiyim qarzidan") |
+| `write_off` | write | Forgive a debt (partial or `all`) |
+| `create_customer` / `delete_customer` | write | Customer management |
+| `cancel_last_entry` | write | Cancel the latest record (optionally of one customer) |
+| `get_customer_debt`, `search_customer` | read | Answer immediately |
+| `list_debtors`, `list_overdue` | read | Debtors by size; overdue debts with days |
+| `ask` | — | One short clarifying question |
+| `say` | — | Greeting, thanks, or "not built yet" (sales, stock, reports come in later stages) |
 
-## Eval
-- `tests/eval/phrases.yaml` — at least 60 phrases; `scripts/run_eval.py`.
-- Acceptance: ≥ 90% accuracy on write tools.
-- Real voice recordings live in `tests/eval/audio/` and are never committed to git.
+## Conversation memory (BR-110 / BR-111)
+
+The last discussed customer and the last 3 exchanges are kept per chat for 15 minutes, so
+"unga yana 20 ming" and short answers like "yuz ming" work. Voice messages are transcribed by the model in the
+`heard` field, which is what goes into the history.
+
+## Voice
+
+Telegram voice notes (OGG/Opus) are sent to the model as `audio/ogg` bytes — no separate speech-to-text.
+Limits: 90 seconds and 2 MB per message (configurable `VOICE_MAX_SECONDS`). Google documents 32 audio tokens per second.
+
+## Privacy
+
+Real customer data may only be sent with a **paid-tier** key. On the free tier Google may use submitted content to
+improve its products and human reviewers may read it; the paid tier does not use prompts or responses for that
+(see [Gemini API terms](https://ai.google.dev/gemini-api/terms)). Use the free tier only with fake data.
+
+## Evaluation
+
+`tests/eval/phrases.yaml` — 66 phrases (Latin + Cyrillic, numbers in words, mixed requests, must-ask cases,
+unsupported requests). `scripts/run_eval.py` sends them to the real model and compares tools, customers, amounts
+(read by our parser), products and due dates. Acceptance: **≥ 90 %** on write tools. Real family voice messages go to
+`tests/eval/audio/` (git-ignored).
+
+Automated tests with a fake model (`tests/integration/test_ai_dispatcher.py`, `tests/unit/test_gemini_adapter.py`)
+cover the dispatcher rules and the exact request sent to Gemini.

@@ -45,11 +45,47 @@ Without any third-party bots, using the official Bot API:
    ```
 3. `"id": 123456789` — this number is your ID. Put it in `ADMIN_TELEGRAM_IDS=` in `.env`.
 
-## 3. Gemini API key — to be completed in Stage 3
+## 3. Gemini API key (needed for the AI agent)
 
-- Google AI Studio → create an API key → `GEMINI_API_KEY`.
-- **Important:** on the free tier, submitted data may be used to improve Google products. Real customer data may only be used with a billing-enabled (paid) key. The free key is for testing with fake data only.
-- Cloud billing, Google AI Pro credits, a monthly budget alert ($5) — instructions will be written in Stage 3 after checking the official documentation.
+1. Open <https://aistudio.google.com/apikey> and sign in with a Google account. Accept the Terms of Service.
+2. Click **Create API key** and copy the key.
+3. Restrict it: on the **API Keys** page hover the **Unrestricted** label → **Add restrictions** →
+   **Restrict to Gemini API only** → **Restrict key**. (Unrestricted keys are rejected by the API.)
+4. Put it in `.env` yourself (never paste it into chat or commit it):
+   ```
+   GEMINI_API_KEY=AIza...
+   GEMINI_MODEL=gemini-3.5-flash-lite
+   ```
+   `gemini-3.5-flash-lite` is listed by Google as *Stable*, supports audio input, function calling and
+   structured output, and costs $0.30 / 1M input tokens and $2.50 / 1M output tokens (paid tier, checked 2026-11-11).
+   Rough estimate: ~100 messages a day ≈ a few dollars a month. Model names change — check
+   <https://aistudio.google.com/docs/models> and change `GEMINI_MODEL` if needed (never in code).
+5. `docker compose up -d bot` — the log line `starting` shows `ai_configured: true`.
+
+### Paid tier — required for real customer data
+
+Google's terms: on the **free** tier submitted content may be used to improve Google products and human reviewers
+may read it ("Do not submit sensitive, confidential, or personal information to the Unpaid Services"). On the
+**paid** tier prompts and responses are not used for that.
+
+1. AI Studio → **Projects** → in your project's **Billing Tier** column click **Set up billing**.
+2. Choose the country, enter contact details and a payment method, prepay at least **$5**.
+3. After a few minutes the project is **Tier 1** (monthly spend cap $250).
+4. Set your own limit: **Spend** page → **Monthly spend cap** → **Edit spend cap** (e.g. $5–10).
+5. Budget *alerts* are set in the Google Cloud console (the AI Studio docs describe spend caps, not alerts).
+
+### Google AI Pro cloud credits (optional)
+
+Google documents that projects with Cloud Billing enabled can get monthly Cloud credits from the Google Developer
+Program and that they apply to Cloud services including the Gemini API ("Google applies eligible Google Cloud
+credits first"). The amount and the activation steps are not stated in the API docs. For prepay billing you need a
+paid balance above $0 in AI Studio to activate promotional credits. Check
+<https://developers.google.com/profile/benefits> (**My Benefits**) after billing is set up.
+
+### If the key leaks
+
+Create a new key → update `.env` → `docker compose up -d bot` → delete the old key → check usage and billing for
+anything unexpected.
 
 ## 4. GitHub — at the end of Stage 0 (with your consent)
 

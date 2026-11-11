@@ -16,11 +16,13 @@ from aiogram.types import BotCommand, ErrorEvent, Message
 from sqlalchemy import URL, text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from bot.ai import build_provider
 from bot.config import Settings, get_settings
 from bot.db.session import make_engine, make_sessionmaker, uow
 from bot.handlers.admin import panel as admin_panel
 from bot.handlers.common import fallback, start
 from bot.handlers.customer import menu as customer_menu
+from bot.handlers.staff import agent as staff_agent
 from bot.handlers.staff import confirm as staff_confirm
 from bot.handlers.staff import ledger as staff_ledger
 from bot.handlers.staff import menu as staff_menu
@@ -66,6 +68,7 @@ def build_dispatcher(settings: Settings, engine: AsyncEngine) -> Dispatcher:
     dp = Dispatcher()
     dp["settings"] = settings
     dp["sm"] = make_sessionmaker(engine)
+    dp["ai"] = build_provider(settings)  # None until GEMINI_API_KEY/GEMINI_MODEL are set
 
     user_mw = UserMiddleware()
     dp.message.outer_middleware(user_mw)
@@ -77,6 +80,7 @@ def build_dispatcher(settings: Settings, engine: AsyncEngine) -> Dispatcher:
         admin_panel.router,
         staff_confirm.router,
         staff_ledger.router,
+        staff_agent.router,
         start.router,
         staff_menu.router,
         customer_menu.router,
@@ -93,6 +97,7 @@ async def main() -> None:
         environment=settings.environment,
         admin_phones=len(settings.admin_phones),
         admin_ids=len(settings.admin_telegram_ids),
+        ai_configured=build_provider(settings) is not None,
     )
     await check_database(settings.app_database_url)
 

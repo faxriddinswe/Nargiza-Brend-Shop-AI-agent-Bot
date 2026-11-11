@@ -59,6 +59,11 @@ class Settings(BaseSettings):
     ai_provider: AIProviderName = AIProviderName.GEMINI
     gemini_api_key: SecretStr | None = None
     gemini_model: str | None = None
+    # Price estimate for the AI log (USD per 1M tokens) — override in .env if Google changes prices
+    ai_input_usd_per_m: float = 0.30
+    ai_output_usd_per_m: float = 2.50
+    # Voice messages longer than this are refused (cost and accuracy)
+    voice_max_seconds: int = 90
 
     # Feature flaglar
     enable_card_payments: bool = False

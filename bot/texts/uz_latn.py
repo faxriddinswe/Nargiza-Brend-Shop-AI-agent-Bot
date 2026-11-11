@@ -627,3 +627,81 @@ def items_total(rows: list[tuple[str, int, int, str | None]], total: int) -> str
 
 def more_debts(n: int) -> str:
     return f"… yana {n} ta qarz"
+
+
+# ============================================================ Stage 3: AI agent (staff)
+AI_NOT_CONFIGURED: Final = "AI hali sozlanmagan. Hozircha pastdagi tugmalardan foydalaning 👇"
+AI_DOWN: Final = (
+    "Hozir tinglay olmayapman, kechirasiz 🙏 Pastdagi tugmalar orqali ishlashingiz mumkin, "
+    "men tez orada tuzalaman."
+)
+AI_VOICE_TOO_LONG: Final = (
+    "Ovozli xabar juda uzun. Iltimos, qisqaroq qilib yuboring (1,5 daqiqagacha)."
+)
+AI_NOT_UNDERSTOOD: Final = "Tushunmadim. Yana bir aytib bering, iltimos."
+AI_LISTENING: Final = "🎧 Tinglayapman…"
+AI_CHOICE_EXPIRED: Final = "Bu savol eskirdi. Iltimos, qaytadan ayting."
+AI_NO_DEBT_ITEM: Final = "Bu mijozning bunday tovardan qarzi yo'q."
+AI_SECTION_QUESTION: Final = "Qaysi bo'lim qarzidan?"
+AI_DEBT_QUESTION: Final = "Qaysi qarzdan ayiramiz?"
+AI_DUE_QUESTION: Final = "Qarz muddati qachon?"
+AI_WHO_QUESTION: Final = "Qaysi mijoz haqida? Ismini ayting."
+AI_NOTHING_TO_CANCEL: Final = "Bekor qiladigan yozuv topilmadi."
+AI_NO_DEBTORS: Final = "Hozir qarzdor yo'q ✅"
+AI_NO_OVERDUE: Final = "Muddati o'tgan qarz yo'q ✅"
+AI_NO_RESULTS: Final = "Hech kim topilmadi."
+
+
+def ai_customer_question(query: str) -> str:
+    return f"«{query}» degan bir nechta mijoz bor. Qaysi biri?"
+
+
+def ai_customer_missing(query: str) -> str:
+    return f"«{query}» degan mijoz topilmadi. 🔍 Qidirish orqali tekshiring yoki ➕ Yangi mijoz qo'shing."
+
+
+def ai_item_question(item: str) -> str:
+    return f"«{item}» qaysi tovar turiga kiradi?"
+
+
+def ai_price_question(item: str) -> str:
+    return f"«{item}» narxini tushunmadim. Bittasi necha so'm? Masalan: 175 ming."
+
+
+def ai_amount_question() -> str:
+    return "Summani tushunmadim. Qancha? Masalan: 100 ming."
+
+
+def ai_due_question() -> str:
+    return "Muddatni tushunmadim. Masalan: 2 hafta, 25-dekabr yoki muddatsiz."
+
+
+def ai_phone_question() -> str:
+    return "Telefon raqamini tushunmadim. 9 ta raqam ayting, masalan: 90 123 45 67."
+
+
+def ai_debtors(rows: list[tuple[str, str, int, date | None]], totals: dict[str, int]) -> str:
+    """rows: (who, section code, owed, next due)."""
+    lines = ["💰 Qarzdorlar", ""]
+    for i, (who, code, owed, due) in enumerate(rows[:20], 1):
+        due_txt = f", muddat {format_date(due)}" if due else ""
+        lines.append(f"{i}. {who} — {SECTION_NAMES[code]}: {money(owed)}{due_txt}")
+    if len(rows) > 20:
+        lines.append(more_debts(len(rows) - 20))
+    lines.append("")
+    lines += [f"Jami {SECTION_NAMES[c]}: {money(v)}" for c, v in totals.items()]
+    return "\n".join(lines)
+
+
+def ai_overdue(rows: list[tuple[str, str, int, int]]) -> str:
+    """rows: (who, section code, remaining, days overdue)."""
+    lines = ["⏰ Muddati o'tganlar", ""]
+    for i, (who, code, rem, days) in enumerate(rows[:20], 1):
+        lines.append(f"{i}. {who} — {SECTION_NAMES[code]}: {money(rem)} ({days} kun o'tgan)")
+    if len(rows) > 20:
+        lines.append(more_debts(len(rows) - 20))
+    return "\n".join(lines)
+
+
+def ai_down_alert(error: str) -> str:
+    return f"⚠️ AI vaqtincha ishlamayapti ({error}). Xodimlar tugmalar bilan ishlayapti."
