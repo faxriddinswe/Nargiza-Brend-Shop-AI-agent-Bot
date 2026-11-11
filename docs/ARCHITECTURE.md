@@ -1,53 +1,53 @@
-# Arxitektura
+# Architecture
 
-> Holat: skelet (0-bosqich). 1–3-bosqichlarda to'ldiriladi, `architect` agenti ko'rib chiqadi.
+> Status: Stage 1 implemented (handlers, middlewares, services, db, backup container). AI and scheduler parts are planned (Stages 3–7).
 
-## Qatlamlar
+## Layers
 
 ```mermaid
 flowchart TD
     TG[Telegram] --> H[handlers/ — aiogram routers]
-    H --> MW[middlewares/ — rol, bloklash, log, xato]
-    H -->|xodim: erkin matn/ovoz| AI[ai/ — AIProvider, dispatcher]
-    AI -->|tool chaqiruvi, Pydantic| S[services/ — BIZNES MANTIQ]
-    H -->|tugmalar| S
+    H --> MW[middlewares/ — role, blocking, logging, errors]
+    H -->|staff: free text/voice| AI[ai/ — AIProvider, dispatcher]
+    AI -->|tool call, Pydantic| S[services/ — BUSINESS LOGIC]
+    H -->|buttons| S
     S --> R[db/repositories]
     R --> PG[(PostgreSQL)]
     SCH[scheduler/ — APScheduler] --> S
-    S -.->|xabar yuborish interfeysi| N[notifications]
+    S -.->|messaging interface| N[notifications]
 ```
 
-**Asosiy qoida:** `services/` aiogram'ni ham, AI'ni ham import qilmaydi. Shunda:
-- biznes mantiq Telegram'siz to'liq testlanadi;
-- AI provayderini (Gemini → Claude) almashtirish service'larga tegmaydi;
-- AI faqat "nima qilmoqchi"ni aytadi, hisob-kitob va ruxsat — kodda.
+**Core rule:** `services/` imports neither aiogram nor the AI layer. As a result:
+- business logic can be fully tested without Telegram;
+- switching the AI provider (Gemini → Claude) does not touch the services;
+- the AI only states *what the user wants to do*; calculations and permission checks happen in code.
 
-## Yozish oqimi (tasdiq bilan)
+## Write flow (with confirmation)
 
 ```mermaid
 sequenceDiagram
-    participant X as Xodim
+    participant X as Staff member
     participant B as Bot (handler)
     participant A as AI
     participant S as Service
     participant D as DB
-    X->>B: "Umida 100 ming berdi"
-    B->>A: matn + kontekst + tool'lar
+    X->>B: "Umida 100 ming berdi" (Umida paid 100k)
+    B->>A: text + context + tools
     A-->>B: add_payment(customer="Umida", amount=100000)
-    B->>S: preview (hisob kodda: FIFO taqsimot)
-    S-->>B: tasdiqlash kartasi + idempotency key
-    B->>X: karta [✅][✏️][❌]
+    B->>S: preview (calculated in code: FIFO allocation)
+    S-->>B: confirmation card + idempotency key
+    B->>X: card [✅][✏️][❌]
     X->>B: ✅
     B->>S: commit(key)
-    S->>D: BEGIN; to'lov + taqsimot + audit; COMMIT
-    S-->>B: natija + kimga xabar
+    S->>D: BEGIN; payment + allocation + audit; COMMIT
+    S-->>B: result + who to notify
 ```
 
-## Bot rejimi
+## Bot mode
 
 - **Dev:** long polling.
-- **Production:** long polling (dastlabki qaror). Sabab: bitta server, bitta bot nusxasi, kam yuklama (4 xodim, ~500 mijoz); webhook uchun domen, TLS sertifikat va ochiq HTTPS port kerak — bu qo'shimcha hujum yuzasi va sozlash. Webhook'ga o'tish yuklama oshsa ko'rib chiqiladi.
+- **Production:** long polling (initial decision). Rationale: a single server, a single bot instance and a light load (4 staff members, ~500 customers). A webhook would require a domain, a TLS certificate and a publicly exposed HTTPS port, which means extra attack surface and extra configuration. Moving to a webhook will be reconsidered if the load grows.
 
-## Komponentlar ro'yxati
+## Component list
 
-Papka tuzilmasi — master prompt 11-bo'lim.
+Folder structure: see section 11 of the master prompt.

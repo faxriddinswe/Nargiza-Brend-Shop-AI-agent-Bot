@@ -1,26 +1,26 @@
 # AI agent
 
-> Holat: skelet. 3-bosqichda to'ldiriladi (google-genai SDK hujjati o'sha paytda tekshiriladi).
+> Status: skeleton. To be filled in during Stage 3 (the google-genai SDK documentation will be checked at that time).
 
-## Provayder
-- `AI_PROVIDER=gemini`, model — `GEMINI_MODEL` (kodda yozilmaydi).
-- `ai/base.py` — `AIProvider` interfeysi; `ai/gemini.py` — amalga oshirish; keyin `ai/claude.py` (ovoz uchun alohida STT).
+## Provider
+- `AI_PROVIDER=gemini`; the model is set via `GEMINI_MODEL` (never hard-coded).
+- `ai/base.py` defines the `AIProvider` interface; `ai/gemini.py` is the implementation; `ai/claude.py` will follow later (with separate STT for voice).
 
-## Qat'iy qoidalar
-- AI hisob qilmaydi va ruxsat hal qilmaydi.
-- Noaniq summa/mijoz/bo'lim → savol, tool emas.
-- Argumentlar Pydantic bilan tekshiriladi; bo'lim kodda qayta aniqlanadi.
-- Yozish tool'lari — tasdiqlash kartasi orqali.
-- Har chaqiruv `ai_calls` ga (token, xarajat, kechikish), shaxsiy ma'lumotsiz.
-- AI ishlamasa — xodimga tushunarli xabar + tugmali menyu; adminga xabar.
+## Strict rules
+- The AI never does calculations and never decides permissions.
+- Ambiguous amount, customer or department → ask a question instead of calling a tool.
+- Arguments are validated with Pydantic; the department is re-determined in code.
+- Write tools always go through a confirmation card.
+- Every call is logged to `ai_calls` (tokens, cost, latency) without any personal data.
+- If the AI is unavailable, the staff member gets a clear message plus the button menu, and the admin is notified.
 
-## Tool'lar
-_3-bosqichda `architect` bilan yakunlanadi (master prompt 8.3)._
+## Tools
+_To be finalised in Stage 3 together with `architect` (master prompt, section 8.3)._
 
-## Tizim prompti
-_3-bosqichda._
+## System prompt
+_Stage 3._
 
 ## Eval
-- `tests/eval/phrases.yaml` — ≥ 60 jumla; `scripts/run_eval.py`.
-- Qabul: yozish tool'larida aniqlik ≥ 90%.
-- Real ovozlar `tests/eval/audio/` — git'ga yuklanmaydi.
+- `tests/eval/phrases.yaml` — at least 60 phrases; `scripts/run_eval.py`.
+- Acceptance: ≥ 90% accuracy on write tools.
+- Real voice recordings live in `tests/eval/audio/` and are never committed to git.

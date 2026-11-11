@@ -1,35 +1,35 @@
-# Admin qo'llanmasi
+# Admin guide
 
-## Admin bo'lish
-`.env` dagi `ADMIN_PHONES` da sizning raqamingiz. Botda /start → ro'yxatdan o'tish → raqamni ulashish.
-Raqam o'zgarsa — `.env` ni yangilab, `docker compose up -d bot`.
+## Becoming an admin
+Your number is listed in `ADMIN_PHONES` in `.env`. In the bot: /start → registration → share your phone number.
+If your number changes, update `.env` and run `docker compose up -d bot`.
 
-## Admin paneli
-Menyuda **🛠 Admin** (yoki `/admin`):
+## Admin panel
+In the menu, tap **⚙️ Boshqa** (*More*) (or send `/admin`):
 
-| Tugma | Nima qiladi |
+| Button | What it does |
 |---|---|
-| 👥 Xodimlar | Ro'yxat: ism, telefon, bo'lim egaligi, holati (ulangan / hali ulanmagan / bloklangan) |
-| ➕ Xodim qo'shish | Telefon → murojaat ("Nodira opa") → bo'lim egaligi → ✅ Tasdiqlash |
-| 📊 Statistika | Adminlar, xodimlar, botdagi va daftardagi mijozlar soni |
-| 🖼 Do'kon rasmi | Xush kelibsiz xabari va "Do'kon haqida" uchun rasm |
-| 📍 Lokatsiya | "Do'kon haqida" da xarita |
+| 👥 Xodimlar (*Staff*) | List: name, phone, department ownership, status (connected / not yet connected / blocked) |
+| ➕ Xodim qo'shish (*Add staff member*) | Phone → form of address (e.g. "Nodira opa") → department ownership → ✅ Tasdiqlash (*Confirm*) |
+| 📊 Statistika (*Statistics*) | Number of admins, staff members, and customers in the bot and in the notebook |
+| 🖼 Do'kon rasmi (*Shop photo*) | Photo for the welcome message and for "Do'kon haqida" (*About the shop*) |
+| 📍 Lokatsiya (*Location*) | Map shown in "Do'kon haqida" (*About the shop*) |
 
-Har bir yozish amali (xodim qo'shish, bloklash, olish) tasdiqlash kartasi orqali. Karta 30 daqiqa amal qiladi.
+Every write action (adding, blocking or removing a staff member) goes through a confirmation card. A card is valid for 30 minutes.
 
-## Xodim qanday ulanadi
-1. Siz uni raqami bilan qo'shasiz.
-2. U botda /start → ro'yxatdan o'tish → "📱 Raqamni ulashish". Bot uni avtomatik xodim qiladi.
-   (Agar u oldin ro'yxatdan o'tgan bo'lsa — darhol xodim bo'ladi.)
+## How a staff member connects
+1. You add them by their phone number.
+2. They open the bot: /start → registration → "📱 Raqamni ulashish" (*Share phone number*). The bot automatically makes them a staff member.
+   (If they had already registered, they become a staff member immediately.)
 
-## Xodim raqami yangi akkauntdan kelsa (BR-012a)
-Sizga "⚠️ ... yangi Telegram akkauntdan ulashildi" xabari keladi. Eski akkaunt darhol huquqdan mahrum bo'ladi.
-Bu haqiqatan o'sha odam bo'lsa (masalan, telefonini almashtirgan) — **✅ Tasdiqlash**. Shubhali bo'lsa — rad eting
-va unga qo'ng'iroq qiling.
+## A staff member's number arrives from a new account (BR-012a)
+You receive a "⚠️ ... yangi Telegram akkauntdan ulashildi" (*... was shared from a new Telegram account*) message. The old account loses its rights immediately.
+If it really is the same person (e.g. they changed phones), tap **✅ Tasdiqlash** (*Confirm*). If it looks suspicious, reject it
+and give them a call.
 
-## Bloklash (telefon yo'qolsa)
-👥 Xodimlar → 🚫 Bloklash → ✅ Tasdiqlash. Keyingi xabaridanoq hech narsa qila olmaydi.
+## Blocking (if a phone is lost)
+**⚙️ Boshqa** (*More*) → **👥 Xodimlar** (*Staff*) → **🚫 Bloklash** (*Block*) → **✅ Tasdiqlash** (*Confirm*). From their very next message they can no longer do anything.
 
-## Tizim xabarlari
-- Har kuni 03:00: "✅ Backup OK: ..." + shifrlangan fayl. Kelmasa yoki "❌ Backup xato" kelsa — RUNBOOK.md.
-- "⚠️ Hajm keskin kamaydi" — ma'lumot o'chirilgan bo'lishi mumkin, darhol tekshiring.
+## System messages
+- Every day at 03:00: "✅ Backup OK: ..." plus the encrypted file. If it does not arrive, or you get "❌ Backup xato" (*Backup error*), see RUNBOOK.md.
+- "⚠️ Hajm keskin kamaydi" (*Size dropped sharply*) — data may have been deleted; check immediately.

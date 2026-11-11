@@ -1,20 +1,26 @@
-# O'zgarishlar tarixi
+# Changelog
 
-## [0.1.0] — 1-bosqich (poydevor) — 2026-11-11
-- Utils: telefon, kirill↔lotin, pul summasi (so'z bilan ham), davrlar — 138 unit test.
-- DB: 10 ta poydevor jadvali; audit Postgres trigger'i bilan (aktorsiz yozuv rad); DELETE taqiqlangan; audit_log o'zgarmas.
-- Tasdiqlash kartalari: idempotent (parallel bosishda ham bitta yozuv), 30 daqiqa.
-- Ro'yxatdan o'tish: kontakt egasi tekshiruvi, telefon orqali rollar (admin/xodim), mijoz yozuviga bog'lash.
-- Admin paneli: xodim qo'shish/bloklash/olish, statistika, do'kon rasmi va lokatsiyasi.
-- Mijoz menyusi: qarzim, e'lonlar, do'kon haqida, bog'lanish, reklamani o'chirish.
-- Backup: alohida konteyner, age shifrlash, 3-2-1 jadvali, Telegram'ga kunlik; restore va tiklash testi.
-- Review tuzatishlari: pul parseri qat'iy grammatika (jim noto'g'ri summa yo'q); bot uchun cheklangan DB roli;
-  bloklangan xodim relink qila olmaydi; raqam ko'chganda mijoz ma'lumoti admin tasdig'isiz ochilmaydi;
-  restore.sh xavfsiz (avval vaqtinchalik baza) va yangi serverga tiklash sinaldi.
+## [Unreleased]
+- Documentation translated into English.
+- Family member names replaced with pseudonyms for the public repository.
+- New categories (migration 0004): kostyum (*suit*) → shop; paypoq (*socks*) and kolgotka (*tights*) → lingerie.
+- The persistent menu is shown again when a message is not recognised.
 
-## [0.0.1] — 0-bosqich (tayyorgarlik) — 2026-11-11
-- Repo skeleti, `pyproject.toml` (versiyalar qotirilgan), ruff/mypy/pytest, pre-commit, CI.
+## [0.1.0] — Stage 1 (foundation) — 2026-11-11
+- Utils: phone numbers, Cyrillic↔Latin, money amounts (including amounts written in words), periods — 138 unit tests.
+- DB: 10 foundation tables; auditing via a Postgres trigger (writes without an actor are rejected); DELETE is forbidden; audit_log is immutable.
+- Confirmation cards: idempotent (a single record even on concurrent taps), valid for 30 minutes.
+- Registration: contact ownership check, phone-based roles (admin/staff), linking to the customer record.
+- Admin panel: add/block/remove staff, statistics, shop photo and location.
+- Customer menu: my debt, announcements, about the shop, contact, opt out of promotions.
+- Backup: separate container, age encryption, 3-2-1 schedule, daily copy to Telegram; restore and restore test.
+- Review fixes: strict grammar for the money parser (no silently wrong amounts); restricted DB role for the bot;
+  a blocked staff member cannot relink; when a number moves to another account, customer data is not exposed without admin approval;
+  restore.sh made safe (restores into a temporary database first) and restoring onto a new server was tested.
+
+## [0.0.1] — Stage 0 (preparation) — 2026-11-11
+- Repository skeleton, `pyproject.toml` (pinned versions), ruff/mypy/pytest, pre-commit, CI.
 - Docker: bot (Python 3.14) + PostgreSQL 18.
-- Minimal bot: sozlamalar, JSON log, DB ulanish tekshiruvi, /start.
-- `CLAUDE.md`, 5 ta subagent (`.claude/agents/`).
-- `docs/BUSINESS_RULES.md` qoralamasi va boshqa hujjatlar skeleti.
+- Minimal bot: settings, JSON logging, DB connection check, /start.
+- `CLAUDE.md`, 5 subagents (`.claude/agents/`).
+- Draft of `docs/BUSINESS_RULES.md` and skeletons of the other documents.

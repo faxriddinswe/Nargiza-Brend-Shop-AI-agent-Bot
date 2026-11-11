@@ -1,22 +1,22 @@
 # Deploy
 
-> Holat: skelet. 10-bosqichda yakunlanadi.
+> Status: skeleton. To be completed in Stage 10.
 
-## Muhitlar
-| Muhit | Joy | Ma'lumot |
+## Environments
+| Environment | Location | Data |
 |---|---|---|
-| local (dev) | Faxriddinning kompyuteri, `docker compose up` | faqat soxta |
-| staging | Azure for Students, Ubuntu, B1s | faqat soxta |
-| production | Contabo VPS (❓ Q-25: qachon) | real |
+| local (dev) | Developer's computer, `docker compose up` | fake only |
+| staging | Azure for Students, Ubuntu, B1s | fake only |
+| production | Contabo VPS (❓ Q-25: when) | real |
 
-## ⚠️ Gemini va real ma'lumot
-Gemini API **bepul tarifida** yuborilgan ma'lumotlar Google mahsulotlarini yaxshilash uchun ishlatilishi mumkin.
-**Real mijoz ma'lumotlari bilan faqat billing yoqilgan (pullik tarif) kalit ishlatiladi.**
-Bepul kalit — faqat dev/staging'da soxta ma'lumot bilan. Production'ni ishga tushirishdan oldin bu tekshiriladi
-(deploy checklist bandi).
+## ⚠️ Gemini and real data
+On the Gemini API **free tier**, submitted data may be used to improve Google products.
+**Real customer data may only be used with a key that has billing enabled (paid tier).**
+The free key is for dev/staging with fake data only. This is verified before production goes live
+(an item on the deploy checklist).
 
-## Production ishga tushirish
+## Starting production
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
-_Batafsil: 10-bosqichda (hardening, deploy skripti, migratsiyadan oldingi backup)._
+_Details in Stage 10 (hardening, deploy script, backup before migrations)._

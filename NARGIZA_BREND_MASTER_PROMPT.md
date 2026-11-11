@@ -2,6 +2,8 @@
 
 > Bu hujjat loyihaning asl talablari (manba). O'zgartirishlar faqat Faxriddin roziligi bilan.
 > Tasdiqlangan, raqamlangan biznes qoidalar: `docs/BUSINESS_RULES.md`.
+> Maxfiylik: bu repo ochiq. Oila a'zolarining ismlari taxalluslar bilan almashtirilgan (Botir aka, Nodira opa,
+> Nilufar opa). Haqiqiy xodimlar kodda yozilmaydi — admin ularni bot ichida telefon raqami bilan qo'shadi.
 
 ## 0. SENING ROLING VA ISH QOIDALARING
 

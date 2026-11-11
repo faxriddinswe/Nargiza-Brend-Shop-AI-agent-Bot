@@ -20,6 +20,7 @@ def blocked(shop_phone: str) -> str:
 CMD_START: Final = "Bosh menyu"
 COMING_SOON: Final = "Bu bo'lim tez orada ishga tushadi 🙂"
 UNKNOWN_INPUT: Final = "Tushunmadim. Iltimos, pastdagi tugmalardan birini tanlang 👇"
+PLEASE_START: Final = "Boshlash uchun /start ni bosing 👇"
 
 # ------------------------------------------------------------------ start / ro'yxatdan o'tish (BR-150…153)
 BTN_REGISTER: Final = "📝 Ro'yxatdan o'tish"

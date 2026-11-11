@@ -1,9 +1,9 @@
-# Runbook — avariya holatlari
+# Runbook — emergency procedures
 
-> Vahima qilmang. Har bir qadamni ketma-ket bajaring. Hech narsani o'chirmang — avval nusxa oling.
-> Holat: 1-bosqich (backup/restore) yakunlangan; server bo'limlari 10-bosqichda to'ldiriladi.
+> Don't panic. Follow each step in order. Don't delete anything — make a copy first.
+> Status: Stage 1 (backup/restore) is complete; the server sections will be filled in during Stage 10.
 
-## 0. Holatni ko'rish
+## 0. Checking the current state
 
 ```bash
 docker compose ps                         # qaysi konteynerlar ishlayapti
@@ -12,92 +12,96 @@ docker compose logs --tail=50 backup      # backup loglari
 docker compose exec backup ls -l /backups/daily /backups/hourly   # mavjud backup'lar
 ```
 
-## 1. Bot javob bermayapti
+(In order: which containers are running; bot logs; backup logs; available backups.)
+
+## 1. The bot is not responding
 
 ```bash
 docker compose restart bot
 docker compose logs --tail=50 bot | grep -E '"bot_ready"|"level": "error"'
 ```
-`bot_ready` chiqsa — ishlayapti. `database` xatosi bo'lsa — 2-bo'limga qarang.
+If `bot_ready` appears, the bot is running. If you see a `database` error, go to section 2.
 
-## 2. Baza ishlamayapti / ma'lumot buzilgan
+## 2. The database is down / data is corrupted
 
-1. Botni to'xtating (yangi yozuvlar tushmasin): `docker compose stop bot`
-2. Postgres holatini ko'ring: `docker compose logs --tail=100 postgres`
-3. Ma'lumot buzilgan bo'lsa — 3-bo'lim (tiklash).
+1. Stop the bot (so that no new records are written): `docker compose stop bot`
+2. Check the Postgres status: `docker compose logs --tail=100 postgres`
+3. If the data is corrupted, go to section 3 (restore).
 
-## 3. Backup'dan tiklash (qadam-baqadam)
+## 3. Restoring from a backup (step by step)
 
-**Kerak:** age yopiq kaliti (parol menejeringizda yoki qog'ozda, `AGE-SECRET-KEY-1...`).
+**You will need:** the age private key (in your password manager or on paper, `AGE-SECRET-KEY-1...`).
 
-1. **Botni to'xtating:**
+1. **Stop the bot:**
    ```bash
    docker compose stop bot
    ```
-2. **Yopiq kalitni vaqtincha serverga qo'ying** (faqat tiklash vaqtiga):
+2. **Place the private key on the server temporarily** (only for the duration of the restore):
    ```bash
    C=$(docker compose ps -q backup)
    nano /tmp/key.txt                          # kalitni joylashtiring, saqlang
    docker cp /tmp/key.txt "$C":/tmp/key.txt && shred -u /tmp/key.txt
    ```
-3. **Qaysi backup'dan tiklashni tanlang:**
+   (In `nano`, paste the key and save.)
+3. **Choose which backup to restore from:**
    ```bash
    docker compose exec backup sh -c 'ls -lt /backups/*/*.dump.age | head'
    ```
-4. **Avval SINOV bazasiga tiklang** (asosiy bazaga tegmaydi):
+4. **Restore into a TEST database first** (the main database is not touched):
    ```bash
    docker compose exec backup restore.sh /backups/daily/<fayl>.dump.age /tmp/key.txt sinov_tiklash
    ```
-   Chiqqan sonlarni (mijozlar, foydalanuvchilar) tekshiring. To'g'rimi?
-5. **Asosiy bazani almashtirish** (faqat 4-qadam to'g'ri bo'lsa):
+   (`<fayl>` = the file name.) Check the counts it prints (customers, users). Do they look right?
+5. **Replace the main database** (only if step 4 looked right):
    ```bash
    docker compose exec backup restore.sh /backups/daily/<fayl>.dump.age /tmp/key.txt nargiza --replace-main
    ```
-   `HA` deb yozing. Eski baza **o'chirilmaydi** — `nargiza_old_<vaqt>` nomi bilan qoladi.
-6. **Kalitni serverdan o'chiring:**
+   Type `HA` (*yes*). The old database is **not deleted** — it is kept under the name `nargiza_old_<vaqt>` (`<vaqt>` = timestamp).
+6. **Remove the key from the server:**
    ```bash
    docker compose exec backup sh -c 'shred -u /tmp/key.txt 2>/dev/null || rm -f /tmp/key.txt'
    ```
-7. **Botni ishga tushiring:** `docker compose start bot`
-8. Botda tekshiring: mijozlar, qarzlar joyidami. Bir necha kundan keyin eski bazani o'chirish:
+7. **Start the bot:** `docker compose start bot`
+8. Check in the bot that customers and debts are all in place. After a few days, delete the old database:
    ```bash
    docker compose exec postgres psql -U nargiza -d postgres -c 'DROP DATABASE "nargiza_old_<vaqt>"'
    ```
-9. Sinov bazasini o'chiring: `... -c 'DROP DATABASE sinov_tiklash'`
+9. Delete the test database: `... -c 'DROP DATABASE sinov_tiklash'`
 
-### Backup Telegram'dan olingan bo'lsa (server butunlay yo'qolgan)
-1. Yangi serverda loyihani o'rnating (DEPLOY.md), `.env` ni tiklang (parol menejeridan: `POSTGRES_*`,
-   `POSTGRES_APP_PASSWORD`, `BOT_TOKEN`), `docker compose up -d postgres backup`.
-   `restore.sh` ilova rolini (`nargiza_app`) o'zi yaratadi. *(Sinaldi: 2026-11-11, bo'sh Postgres'ga tiklash.)*
-2. Bo'sh bazaga migratsiya **qilmang** — tiklash sxemani ham olib keladi.
-3. Faylni serverga yuklang: `scp nargiza_daily_....dump.age server:/tmp/`, keyin
-   `docker cp /tmp/<fayl> "$C":/backups/` va 3-bo'limning 2–7 qadamlari.
+### If the backup came from Telegram (the server is completely lost)
+1. Install the project on a new server (DEPLOY.md), restore `.env` (from the password manager: `POSTGRES_*`,
+   `POSTGRES_APP_PASSWORD`, `BOT_TOKEN`), then run `docker compose up -d postgres backup`.
+   `restore.sh` creates the application role (`nargiza_app`) by itself. *(Tested 2026-11-11: restore into an empty Postgres.)*
+2. **Do not** run migrations on the empty database — the restore brings the schema with it.
+3. Upload the file to the server: `scp nargiza_daily_....dump.age server:/tmp/`, then
+   `docker cp /tmp/<fayl> "$C":/backups/`, and follow steps 2–7 of section 3.
 
-## 4. Backup'ni qo'lda olish
+## 4. Taking a backup manually
 ```bash
 docker compose exec backup backup.sh daily
 ```
 
-## 5. Tiklash testini qo'lda o'tkazish
+## 5. Running the restore test manually
 ```bash
 docker compose exec backup restore_test.sh /tmp/key.txt     # kalit 3.2 qadamdagidek qo'yiladi
 ```
-Har bir jadval uchun ✅ chiqishi kerak. Keyin kalitni o'chiring (3.6).
+(Place the key as in step 3.2.) Every table should show ✅. Afterwards, remove the key (step 3.6).
 
-## 6. age yopiq kaliti yo'qolsa
-- Mavjud backup'larni **ochib bo'lmaydi** — shuning uchun kalit ikki joyda (parol menejeri + qog'oz).
-- Darhol: yangi kalit yarating (SETUP_KEYS.md 6-bo'lim), `.env` dagi `BACKUP_AGE_RECIPIENT` ni yangilang,
-  `docker compose up -d backup`, so'ng `docker compose exec backup backup.sh daily` — yangi kalit bilan backup.
-- Eski backup'lar keraksiz bo'lib qoladi; baza o'zi joyida bo'lsa ma'lumot yo'qolmaydi.
+## 6. If the age private key is lost
+- Existing backups **cannot be opened** — this is why the key is kept in two places (password manager + paper).
+- Immediately: generate a new key (SETUP_KEYS.md, section 6), update `BACKUP_AGE_RECIPIENT` in `.env`,
+  run `docker compose up -d backup`, then `docker compose exec backup backup.sh daily` to take a backup with the new key.
+- The old backups become useless; as long as the database itself is intact, no data is lost.
 
-## 7. Bot tokeni sizib chiqsa
-@BotFather → `/mybots` → bot → *API Token* → *Revoke current token*. Yangi tokenni `.env` ga →
+## 7. If the bot token leaks
+@BotFather → `/mybots` → your bot → *API Token* → *Revoke current token*. Put the new token in `.env` →
 `docker compose up -d bot backup`.
 
-## 8. Xodimning telefoni yo'qolsa
-Botda: **🛠 Admin → 👥 Xodimlar → 🚫 Bloklash → ✅ Tasdiqlash**. U keyingi xabaridanoq hech narsa
-qila olmaydi. Yangi telefon/akkaunt bilan qaytsa — raqamini ulashadi, sizga tasdiqlash so'rovi keladi.
+## 8. If a staff member loses their phone
+In the bot: **⚙️ Boshqa** (*More*) (or `/admin`) → **👥 Xodimlar** (*Staff*) → **🚫 Bloklash** (*Block*) → **✅ Tasdiqlash** (*Confirm*).
+From their very next message they can no longer do anything. If they come back with a new phone/account, they share
+their number and you receive a confirmation request.
 
-## 9. Admin raqami o'zgarsa
-`.env` dagi `ADMIN_PHONES` ni yangilang → `docker compose up -d bot`. Bot ishga tushganda eski
-raqamdagi admin huquqini avtomatik oladi.
+## 9. If the admin's phone number changes
+Update `ADMIN_PHONES` in `.env` → `docker compose up -d bot`. On startup, the bot automatically revokes admin
+rights from the old number.
