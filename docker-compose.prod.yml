@@ -1,0 +1,28 @@
+# Production qo'shimchalari (10-bosqichda yakunlanadi).
+# Ishlatish: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Farqlar:
+#  - Postgres porti HECH QAYERGA ochilmaydi (faqat Docker ichki tarmog'i).
+#  - Backup papkasi DB volume'dan alohida, host diskida.
+#  - Log hajmi cheklangan (disk to'lib qolmasligi uchun).
+
+services:
+  postgres:
+    ports: !reset []
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
+  bot:
+    environment:
+      ENVIRONMENT: prod
+    # Konteyner imtiyozlarini minimal qilish
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs: [/tmp]
+    volumes:
+      - ./backups:/backups
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }

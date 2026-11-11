@@ -1,0 +1,16 @@
+# Docker build kontekstiga maxfiy va keraksiz fayllar yuborilmasin
+.env
+.env.*
+*.age
+*.key
+secrets/
+backups/
+exports/
+.git/
+.venv/
+venv/
+**/__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+tests/eval/audio/

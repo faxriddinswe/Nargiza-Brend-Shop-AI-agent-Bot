@@ -1,0 +1,35 @@
+# O'rnatish: .venv/bin/pre-commit install
+# Asboblar .venv dagi qotirilgan versiyalardan ishlaydi (pyproject.toml bilan bir xil).
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: .venv/bin/ruff check --fix
+        language: system
+        types: [python]
+      - id: ruff-format
+        name: ruff format
+        entry: .venv/bin/ruff format
+        language: system
+        types: [python]
+      - id: mypy
+        name: mypy
+        entry: .venv/bin/mypy bot tests
+        language: system
+        types: [python]
+        pass_filenames: false
+      - id: no-env-file
+        name: .env commit qilinmasin
+        entry: ".env fayli commit qilinmoqda — to'xtatildi"
+        language: fail
+        files: '(^|/)\.env$'
+      - id: detect-private-key
+        name: yopiq kalit tekshiruvi
+        # grep topsa 0 qaytaradi — shuning uchun natijani teskari qilamiz:
+        # kalit topilsa hook yiqiladi va fayl nomini ko'rsatadi.
+        # Naqshlar: SSH/PEM yopiq kalit, age yopiq kaliti, Telegram bot tokeni, Google API kaliti.
+        entry: bash -c '! grep -lE "(BEGIN [A-Z ]*PRIVATE KEY|AGE-SECRET-KEY-1|[0-9]{8,10}:AA[A-Za-z0-9_-]{30,}|AIza[0-9A-Za-z_-]{35})" "$@"' --
+        language: system
+        types: [text]
+        exclude: '^\.pre-commit-config\.yaml$'

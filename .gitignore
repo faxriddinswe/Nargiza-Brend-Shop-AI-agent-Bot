@@ -1,0 +1,45 @@
+# Maxfiy ma'lumotlar — HECH QACHON git'ga tushmasin
+.env
+.env.*
+!.env.example
+*.age
+*.key
+age-key*.txt
+secrets/
+
+# Backup'lar va DB dump'lar
+backups/
+*.dump
+*.sql.gz
+
+# Real ovozli xabarlar (oila ovozlari — shaxsiy)
+tests/eval/audio/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+
+# Asboblar keshi
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Excel eksportlar (mijoz ma'lumoti bo'lishi mumkin)
+exports/
+*.xlsx
+
+# Muharrir
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Claude Code shaxsiy sozlamalari (agents/ esa commit qilinadi)
+.claude/settings.local.json
