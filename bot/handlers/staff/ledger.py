@@ -775,7 +775,7 @@ async def restore_chosen(
 # keep state-only handlers from swallowing menu presses: a menu button always resets the flow
 @router.message(
     StateFilter("*"),
-    F.text.in_({t.BTN_STAFF_SALE, t.BTN_STAFF_REPORT, t.BTN_STAFF_STOCK, t.BTN_STAFF_BROADCAST}),
+    F.text.in_({t.BTN_STAFF_REPORT, t.BTN_STAFF_BROADCAST}),
 )
 async def other_menu(message: Message, state: FSMContext) -> None:
     await state.clear()

@@ -182,6 +182,36 @@ async def _all_choices_for_item(
 Handler = Any
 
 
+async def _resolve_items(
+    session: AsyncSession,
+    call: ToolCall,
+    args_items: list[tools.ItemArg],
+    fix: dict[str, Any],
+    customer_id: int | None,
+) -> tuple[list[ledger.ItemInput], list[tuple[str, int]]] | Outcome:
+    """Spoken items → category + price, by our own code. Unknown product / unclear price → an Outcome that asks."""
+    mapping = fix.get("item_categories", {})
+    by_id = {x.id: x for x in await ledger.categories(session)}
+    items: list[ledger.ItemInput] = []
+    assumed: list[tuple[str, int]] = []
+    for idx, it in enumerate(args_items):
+        cat = (
+            by_id.get(int(mapping[str(idx)]))
+            if str(idx) in mapping
+            else await resolve_category(session, it.item)
+        )
+        if cat is None:
+            return await _all_choices_for_item(session, call, idx, fix, it.item)
+        try:
+            parsed_price = parse_amount(it.unit_price_text)
+        except AmountParseError:
+            return Outcome(question=t.ai_price_question(it.item), customer_id=customer_id)
+        if parsed_price.assumed_thousands:
+            assumed.append((it.unit_price_text, parsed_price.value))
+        items.append(ledger.ItemInput(cat.id, it.quantity, parsed_price.value, it.note))
+    return items, assumed
+
+
 async def _add_debt(
     session: AsyncSession,
     actor: User,
@@ -193,40 +223,13 @@ async def _add_debt(
     c = await _customer(session, call, args.customer_query, fix, ctx)
     if isinstance(c, Outcome):
         return c
-    mapping = fix.get("item_categories", {})
-    by_id = {x.id: x for x in await ledger.categories(session)}
-    items: list[ledger.ItemInput] = []
-    assumed: list[tuple[str, int]] = []
-    for idx, it in enumerate(args.items):
-        cat = (
-            by_id.get(int(mapping[str(idx)]))
-            if str(idx) in mapping
-            else await resolve_category(session, it.item)
-        )
-        if cat is None:
-            return await _all_choices_for_item(session, call, idx, fix, it.item)
-        try:
-            parsed_price = parse_amount(it.unit_price_text)
-        except AmountParseError:
-            return Outcome(question=t.ai_price_question(it.item), customer_id=c.id)
-        price = parsed_price.value
-        if parsed_price.assumed_thousands:
-            assumed.append((it.unit_price_text, price))
-        items.append(ledger.ItemInput(cat.id, it.quantity, price, it.note))
+    resolved = await _resolve_items(session, call, args.items, fix, c.id)
+    if isinstance(resolved, Outcome):
+        return resolved
+    items, assumed = resolved
     due_text = fix.get("due_text", args.due_text)
     if due_text is None:
-        opts = [
-            ("📅 1 hafta", "1 hafta"),
-            ("📅 2 hafta", "2 hafta"),
-            ("📅 1 oy", "1 oy"),
-            ("♾ Muddatsiz", "muddatsiz"),
-        ]
-        return Outcome(
-            question=t.AI_DUE_QUESTION,
-            choices=[Choice(label, {"due_text": v}) for label, v in opts],
-            resume=call,
-            customer_id=c.id,
-        )
+        return _due_question(call, c.id)
     understood, due = parse_due_text(due_text, ctx.today)
     if not understood:
         return Outcome(question=t.ai_due_question(), customer_id=c.id)
@@ -235,6 +238,182 @@ async def _add_debt(
     except ledger.LedgerError:
         return Outcome(text=t.AI_NOT_UNDERSTOOD, customer_id=c.id)
     return Outcome(text=_with_assumed(card.text, assumed), card=card, customer_id=c.id)
+
+
+def _due_question(call: ToolCall, customer_id: int | None) -> Outcome:
+    opts = [
+        ("📅 1 hafta", "1 hafta"),
+        ("📅 2 hafta", "2 hafta"),
+        ("📅 1 oy", "1 oy"),
+        ("♾ Muddatsiz", "muddatsiz"),
+    ]
+    return Outcome(
+        question=t.AI_DUE_QUESTION,
+        choices=[Choice(label, {"due_text": v}) for label, v in opts],
+        resume=call,
+        customer_id=customer_id,
+    )
+
+
+async def _add_sale(
+    session: AsyncSession,
+    actor: User,
+    call: ToolCall,
+    args: tools.AddSale,
+    fix: dict[str, Any],
+    ctx: Context,
+) -> Outcome:
+    from bot.services.sale_math import (
+        CustomerRequiredError,
+        PaidAboveTotalError,
+        PriceAboveListError,
+        SaleMathError,
+    )
+    from bot.services.sales import MultiSectionOverrideError
+
+    customer: Customer | None = None
+    if args.customer_query or fix.get("customer_id"):
+        c = await _customer(session, call, args.customer_query, fix, ctx)
+        if isinstance(c, Outcome):
+            return c
+        customer = c
+    cid = customer.id if customer else None
+    resolved = await _resolve_items(session, call, args.items, fix, cid)
+    if isinstance(resolved, Outcome):
+        return resolved
+    items, assumed = resolved
+    final_total = paid = None
+    try:
+        if args.total_text:
+            parsed = parse_amount(args.total_text)
+            final_total = parsed.value
+            if parsed.assumed_thousands:
+                assumed.append((args.total_text, parsed.value))
+        if args.paid_text:
+            parsed = parse_amount(args.paid_text)
+            paid = parsed.value
+            if parsed.assumed_thousands:
+                assumed.append((args.paid_text, parsed.value))
+    except AmountParseError:
+        return Outcome(question=t.ai_amount_question(), customer_id=cid)
+    due: date | None = None
+    if paid is not None and customer is not None:
+        due_text = fix.get("due_text", args.due_text)
+        if due_text is None:
+            # only ask when part of the price really stays unpaid
+            list_total = sum(i.total for i in items)
+            if paid < (final_total if final_total is not None else list_total):
+                return _due_question(call, cid)
+        else:
+            understood, due = parse_due_text(due_text, ctx.today)
+            if not understood:
+                return Outcome(question=t.ai_due_question(), customer_id=cid)
+    try:
+        card = await cards.sale_card(
+            session, actor, customer, items, final_total=final_total, paid=paid, due=due
+        )
+    except PriceAboveListError:
+        return Outcome(text=t.PRICE_ABOVE_LIST, customer_id=cid)
+    except PaidAboveTotalError as e:
+        return Outcome(
+            text=t.overpay(cards.who(customer) if customer else "Mijoz", e.total, e.paid),
+            customer_id=cid,
+        )
+    except CustomerRequiredError:
+        return Outcome(question=t.SALE_NEEDS_CUSTOMER)
+    except MultiSectionOverrideError:
+        return Outcome(text=t.MULTI_SECTION_PRICE, customer_id=cid)
+    except SaleMathError:
+        return Outcome(text=t.AI_NOT_UNDERSTOOD, customer_id=cid)
+    return Outcome(text=_with_assumed(card.text, assumed), card=card, customer_id=cid)
+
+
+async def _stock_in(
+    session: AsyncSession,
+    actor: User,
+    call: ToolCall,
+    args: tools.AddStockIn,
+    fix: dict[str, Any],
+    ctx: Context,
+) -> Outcome:
+    mapping = fix.get("item_categories", {})
+    cat = (
+        next(
+            (
+                x
+                for x in await ledger.categories(session)
+                if str(0) in mapping and x.id == int(mapping["0"])
+            ),
+            None,
+        )
+        if mapping
+        else await resolve_category(session, args.item)
+    )
+    if cat is None:
+        return await _all_choices_for_item(session, call, 0, fix, args.item)
+    card = await cards.stock_in_card(session, actor, cat.id, args.quantity)
+    return Outcome(text=card.text, card=card)
+
+
+async def _stock_count(
+    session: AsyncSession,
+    actor: User,
+    call: ToolCall,
+    args: tools.StockCount,
+    fix: dict[str, Any],
+    ctx: Context,
+) -> Outcome:
+    mapping = fix.get("item_categories", {})
+    counts: dict[int, int] = {}
+    for idx, ci in enumerate(args.counts):
+        if str(idx) in mapping:
+            cat_id = int(mapping[str(idx)])
+        else:
+            cat = await resolve_category(session, ci.item)
+            if cat is None:
+                return await _all_choices_for_item(session, call, idx, fix, ci.item)
+            cat_id = cat.id
+        counts[cat_id] = ci.counted
+    card = await cards.stock_count_card(session, actor, counts)
+    return Outcome(text=card.text, card=card)
+
+
+async def _get_stock(
+    session: AsyncSession,
+    actor: User,
+    call: ToolCall,
+    args: tools.GetStock,
+    fix: dict[str, Any],
+    ctx: Context,
+) -> Outcome:
+    from bot.services import inventory
+
+    only = None
+    if args.item:
+        cat = await resolve_category(session, args.item)
+        if cat is None:
+            return Outcome(question=t.ai_item_question(args.item))
+        only = [cat.id]
+    rows = await inventory.levels(session, only)
+    if not rows:
+        return Outcome(text=t.STOCK_EMPTY)
+    return Outcome(text=t.stock_list([(r.section_code, r.name, r.qty, r.threshold) for r in rows]))
+
+
+async def _low_stock(
+    session: AsyncSession,
+    actor: User,
+    call: ToolCall,
+    args: tools.ListLowStock,
+    fix: dict[str, Any],
+    ctx: Context,
+) -> Outcome:
+    from bot.services import inventory
+
+    rows = await inventory.low_stock(session)
+    if not rows:
+        return Outcome(text=t.NO_LOW_STOCK)
+    return Outcome(text=t.low_stock_list([(r.section_code, r.name, r.qty) for r in rows]))
 
 
 def _with_assumed(text: str, assumed: list[tuple[str, int]]) -> str:
@@ -526,6 +705,16 @@ async def run_call(session: AsyncSession, actor: User, call: ToolCall, ctx: Cont
     outcome: Outcome
     if isinstance(args, tools.AddDebt):
         outcome = await _add_debt(session, actor, call, args, fix, ctx)
+    elif isinstance(args, tools.AddSale):
+        outcome = await _add_sale(session, actor, call, args, fix, ctx)
+    elif isinstance(args, tools.AddStockIn):
+        outcome = await _stock_in(session, actor, call, args, fix, ctx)
+    elif isinstance(args, tools.StockCount):
+        outcome = await _stock_count(session, actor, call, args, fix, ctx)
+    elif isinstance(args, tools.GetStock):
+        outcome = await _get_stock(session, actor, call, args, fix, ctx)
+    elif isinstance(args, tools.ListLowStock):
+        outcome = await _low_stock(session, actor, call, args, fix, ctx)
     elif isinstance(args, tools.AddPayment):
         outcome = await _pay(session, actor, call, args, fix, ctx, PaymentKind.PAYMENT)
     elif isinstance(args, tools.WriteOff):

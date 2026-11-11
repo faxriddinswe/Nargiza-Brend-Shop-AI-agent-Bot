@@ -319,7 +319,7 @@ class Debt(CancelMixin, Base):
     customer_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("customers.id"))
     section_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("sections.id"))
     kind: Mapped[str] = mapped_column(Text, server_default="regular")
-    sale_id: Mapped[int | None] = mapped_column(BigInteger)
+    sale_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("sales.id"))
     debt_date: Mapped[date]
     due_date: Mapped[date | None]
     total_amount: Mapped[int] = mapped_column(BigInteger)
@@ -455,4 +455,90 @@ class AiCall(Base):
     tools: Mapped[str | None] = mapped_column(Text)
     success: Mapped[bool] = mapped_column(Boolean)
     error_type: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+# ============================================================ Stage 5: sales and stock
+class Sale(CancelMixin, Base):
+    __tablename__ = "sales"
+    __table_args__ = (
+        CheckConstraint("items_total > 0", name="items_positive"),
+        CheckConstraint("discount_amount >= 0 AND discount_amount < items_total", name="discount"),
+        CheckConstraint("total_amount = items_total - discount_amount", name="total"),
+        CheckConstraint("paid_amount >= 0 AND paid_amount <= total_amount", name="paid"),
+        CheckConstraint(
+            "paid_amount = total_amount OR customer_id IS NOT NULL", name="credit_needs_customer"
+        ),
+        CheckConstraint("status IN ('active', 'cancelled')", name="status"),
+        CheckConstraint(
+            "(status = 'cancelled') = (cancelled_at IS NOT NULL)", name="cancel_fields"
+        ),
+        UniqueConstraint("id", "section_id", name="uq_sales_id_section"),
+        Index("ix_sales_section_day", "section_id", "sale_date"),
+        Index("ix_sales_customer", "customer_id", postgresql_where=text("customer_id IS NOT NULL")),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    section_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("sections.id"))
+    customer_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("customers.id"))
+    sale_date: Mapped[date]
+    items_total: Mapped[int] = mapped_column(BigInteger)
+    discount_amount: Mapped[int] = mapped_column(BigInteger, server_default="0")
+    total_amount: Mapped[int] = mapped_column(BigInteger)
+    paid_amount: Mapped[int] = mapped_column(BigInteger)
+    note: Mapped[str | None] = mapped_column(Text)
+    cancelled_by: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.id"))
+    created_by: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class SaleItem(Base):
+    __tablename__ = "sale_items"
+    __table_args__ = (
+        CheckConstraint("quantity > 0", name="quantity_positive"),
+        CheckConstraint("unit_price > 0", name="price_positive"),
+        ForeignKeyConstraint(
+            ["sale_id", "section_id"],
+            ["sales.id", "sales.section_id"],
+            name="fk_sale_items_sale_section",
+        ),
+        ForeignKeyConstraint(
+            ["category_id", "section_id"],
+            ["categories.id", "categories.section_id"],
+            name="fk_sale_items_category_section",
+        ),
+        Index("ix_sale_items_sale", "sale_id"),
+        Index("ix_sale_items_category", "category_id", "section_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    sale_id: Mapped[int] = mapped_column(BigInteger)
+    section_id: Mapped[int] = mapped_column(BigInteger)
+    category_id: Mapped[int] = mapped_column(BigInteger)
+    quantity: Mapped[int] = mapped_column(Integer)
+    unit_price: Mapped[int] = mapped_column(BigInteger)
+    note: Mapped[str | None] = mapped_column(Text)
+
+
+class StockMovement(Base):
+    __tablename__ = "stock_movements"
+    __table_args__ = (
+        CheckConstraint("quantity <> 0", name="nonzero"),
+        CheckConstraint(
+            "reason IN ('stock_in', 'sale', 'debt', 'return', 'count_adjustment', 'cancel')",
+            name="reason",
+        ),
+        Index("ix_stock_movements_category", "category_id"),
+        Index("ix_stock_movements_ref", "ref_type", "ref_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    category_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("categories.id"))
+    quantity: Mapped[int] = mapped_column(Integer)
+    reason: Mapped[str] = mapped_column(Text)
+    ref_type: Mapped[str | None] = mapped_column(Text)
+    ref_id: Mapped[int | None] = mapped_column(BigInteger)
+    note: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())

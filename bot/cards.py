@@ -178,3 +178,90 @@ async def customer_card_text(session: AsyncSession, customer: Customer) -> tuple
         customer.name, customer.address_form, customer.phone, customer.note, sections
     )
     return text, bool(sections)
+
+
+async def sale_card(
+    session: AsyncSession,
+    actor: User,
+    customer: Customer | None,
+    items: Sequence[ledger.ItemInput],
+    *,
+    final_total: int | None,
+    paid: int | None,
+    due: date | None,
+) -> Card:
+    """Raises SaleMathError subclasses (price above list, paid above total, customer required, …)."""
+    from bot.services.sale_math import plan_sale
+    from bot.services.sales import MultiSectionOverrideError
+
+    cats = {c.id: c for c in await ledger.categories(session)}
+    groups = ledger.split_by_section(items, {i: c.section_id for i, c in cats.items()})
+    if len(groups) > 1 and (final_total is not None or paid is not None):
+        raise MultiSectionOverrideError
+    codes = await ledger.section_codes(session)
+    after = (
+        {codes[sid]: bal for sid, bal in (await ledger.balances(session, customer.id)).items()}
+        if customer
+        else {}
+    )
+    card_groups = []
+    for sid, group in sorted(groups.items()):
+        plan = plan_sale(
+            sum(i.total for i in group),
+            final_total=final_total,
+            paid=paid,
+            has_customer=customer is not None,
+        )
+        rows = [(cats[i.category_id].name, i.quantity, i.unit_price, i.note) for i in group]
+        card_groups.append(
+            (codes[sid], rows, plan.items_total, plan.discount, plan.paid, plan.debt)
+        )
+        if plan.debt:
+            after[codes[sid]] = after.get(codes[sid], 0) + plan.debt
+    key = await pending.create(
+        session,
+        user_id=actor.id,
+        action="create_sale",
+        payload={
+            "customer_id": customer.id if customer else None,
+            "items": [
+                {
+                    "category_id": i.category_id,
+                    "quantity": i.quantity,
+                    "unit_price": i.unit_price,
+                    "note": i.note,
+                }
+                for i in items
+            ],
+            "final_total": final_total,
+            "paid": paid,
+            "due": due.isoformat() if due else None,
+        },
+    )
+    return Card(key, t.sale_card(who(customer) if customer else None, card_groups, due, after))
+
+
+async def stock_in_card(session: AsyncSession, actor: User, category_id: int, qty: int) -> Card:
+    from bot.services import inventory
+
+    row = (await inventory.levels(session, [category_id]))[0]
+    key = await pending.create(
+        session,
+        user_id=actor.id,
+        action="stock_in",
+        payload={"category_id": category_id, "quantity": qty},
+    )
+    return Card(key, t.stock_in_card(row.name, qty, row.qty))
+
+
+async def stock_count_card(session: AsyncSession, actor: User, counts: dict[int, int]) -> Card:
+    from bot.services import inventory
+
+    plan = await inventory.plan_count(session, counts)
+    key = await pending.create(
+        session,
+        user_id=actor.id,
+        action="stock_count",
+        payload={"counts": {str(k): v for k, v in counts.items()}},
+    )
+    return Card(key, t.stock_count_card([(d.name, d.before, d.counted) for d in plan]))

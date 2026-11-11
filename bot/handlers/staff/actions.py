@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.db.models import AddressForm, Customer, Debt, Payment, PaymentKind, User
 from bot.services import customers as cust
-from bot.services import ledger
+from bot.services import inventory, ledger, sales
 from bot.services import staff as staff_svc
 from bot.services import users as users_svc
 from bot.services.ledger import ItemInput
@@ -72,6 +72,21 @@ async def execute(
 
     if action == "record_payment":
         return await _record_payment(session, actor, payload, today)
+
+    if action == "create_sale":
+        return await _create_sale(session, actor, payload, today)
+
+    if action == "stock_in":
+        row = await inventory.stock_in(
+            session, actor, int(payload["category_id"]), int(payload["quantity"])
+        )
+        return t.stock_in_saved(row.name, row.qty), []
+
+    if action == "stock_count":
+        done = await inventory.stock_count(
+            session, actor, {int(k): int(v) for k, v in payload["counts"].items()}
+        )
+        return t.stock_count_saved(len(done)), []
 
     if action == "cancel_entry":
         return await _cancel_entry(session, actor, payload)
@@ -190,3 +205,68 @@ async def _cancel_entry(
         t.owner_cancel_notice(who, what, display(customer), amount),
     )
     return t.cancelled_ok(kind, customer.name), notify
+
+
+async def _create_sale(
+    session: AsyncSession, actor: User, payload: dict[str, Any], today: date
+) -> tuple[str, Notify]:
+    customer = (
+        await cust.get(session, int(payload["customer_id"])) if payload.get("customer_id") else None
+    )
+    items = [
+        ItemInput(int(i["category_id"]), int(i["quantity"]), int(i["unit_price"]), i.get("note"))
+        for i in payload["items"]
+    ]
+    due = date.fromisoformat(payload["due"]) if payload.get("due") else None
+    made = await sales.create_sales(
+        session,
+        actor,
+        customer_id=customer.id if customer else None,
+        items=items,
+        final_total=payload.get("final_total"),
+        paid=payload.get("paid"),
+        due_date=due,
+        today=today,
+    )
+    cats = {c.id: c for c in await ledger.categories(session, active_only=False)}
+    codes = await ledger.section_codes(session)
+    by_section = await ledger.balances(session, customer.id) if customer else {}
+    who = await staff_svc.actor_label(session, actor)
+    notify: Notify = []
+    warn: dict[str, int] = {}
+    for m in made:
+        code = codes[m.section_id]
+        for w in m.warnings:
+            warn[w.name] = w.qty
+        if (
+            customer is not None and m.plan.debt > 0
+        ):  # the customer hears about the credit part (BR-054)
+            rows = t.items_summary(
+                [(cats[i.category_id].name, i.quantity, i.unit_price, i.note) for i in m.items]
+            )
+            notify += await _customer_notice(
+                session,
+                customer,
+                t.customer_sale_notice(
+                    display(customer),
+                    code,
+                    rows,
+                    m.plan.total,
+                    m.plan.paid,
+                    m.plan.debt,
+                    due,
+                    by_section.get(m.section_id, 0),
+                ),
+            )
+        notify += await _owners_notice(
+            session,
+            actor,
+            code,
+            t.owner_notice(
+                who, "savdo yozdi", display(customer) if customer else "mijozsiz", m.plan.total
+            ),
+        )
+    text = t.sale_saved(display(customer) if customer else None)
+    if warn:
+        text += t.stock_warning(list(warn.items()))
+    return text, notify

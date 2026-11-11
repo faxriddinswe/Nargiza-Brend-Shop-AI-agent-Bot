@@ -737,3 +737,126 @@ def cancel_card_by(kind: str, name: str, amount: int, when: date, by: str, at: s
         f"Sana: {format_date(when)}, soat {at}\nYozgan: {by}\n\n"
         "Yozuv o'chmaydi — «bekor qilingan» deb tarixda qoladi."
     )
+
+
+# ============================================================ Stage 5: sales and stock
+BTN_SALE_HELP: Final = (
+    "🛍 Savdoni yozish: shunchaki yozing yoki gapiring 🎤\n\n"
+    "• «Ko'ylak 450 ming sotildi»\n"
+    "• «500 minglik ko'ylakni 450 ga sotdim»\n"
+    "• «Umidaga ko'ylak 500 ming, 200 berdi, qolgani qarz»\n"
+    "• «2 ta yubka sotildi, bittasi 90 ming»\n\n"
+    "Keyin bot kartani ko'rsatadi — to'g'ri bo'lsa ✅ Tasdiqlash ni bosing."
+)
+STOCK_EMPTY: Final = (
+    "Ombor hali bo'sh. Kirim yozing: «20 ta yubka keldi» yoki sanoq: «ko'ylak 45 ta»."
+)
+PRICE_ABOVE_LIST: Final = (
+    "Kelishilgan narx ro'yxat narxidan yuqori ekan. Narxlarni tekshirib, qayta ayting."
+)
+SALE_NEEDS_CUSTOMER: Final = "Qarz qismi bor — kim uchun? Mijoz ismini ayting."
+MULTI_SECTION_PRICE: Final = (
+    "Ikki bo'lim tovari bitta narx bilan yozilmaydi. Har bir bo'limni alohida ayting, iltimos."
+)
+SALE_QTY_ASK: Final = "Nechta kirim qilamiz?"
+
+
+def sale_card(
+    customer: str | None,
+    groups: list[tuple[str, list[tuple[str, int, int, str | None]], int, int, int, int]],
+    due: date | None,
+    balances_after: dict[str, int],
+) -> str:
+    """groups: (section code, item rows, list total, discount, paid, debt)."""
+    lines = ["🛍 Savdo", f"👤 {customer}" if customer else "👤 Mijozsiz (naqd)"]
+    for code, rows, list_total, discount, paid, debt in groups:
+        lines += ["", f"📂 Bo'lim: {SECTION_NAMES[code]}", items_summary(rows)]
+        if discount:
+            lines += [f"Ro'yxat narxi: {money(list_total)}", f"Chegirma: −{money(discount)}"]
+        lines.append(f"Savdo: {money(list_total - discount)}")
+        lines.append(f"💵 Naqd tushdi: {money(paid)}")
+        if debt:
+            lines.append(
+                f"📝 Nasiyaga: {money(debt)}"
+                + (f" (muddat {format_date(due)})" if due else " (muddatsiz)")
+            )
+    if balances_after:
+        after = ", ".join(f"{SECTION_NAMES[c]} {money(v)}" for c, v in balances_after.items())
+        lines += ["", f"Qarzi keyin: {after}"]
+    lines += ["", "To'g'rimi?"]
+    return "\n".join(lines)
+
+
+def sale_saved(customer: str | None) -> str:
+    return f"✅ Savdo saqlandi{': ' + customer if customer else ''}."
+
+
+def stock_warning(rows: list[tuple[str, int]]) -> str:
+    out = ["", "⚠️ Ombor:"]
+    out += [f"• {name} qoldig'i {qty} — kirim yozilmagan bo'lishi mumkin" for name, qty in rows]
+    return "\n".join(out)
+
+
+def stock_in_card(name: str, qty: int, before: int) -> str:
+    return f"📦 Kirim\n\n{name.capitalize()}: +{qty} ta\nOmborda: {before} → {before + qty} ta\n\nTo'g'rimi?"
+
+
+def stock_in_saved(name: str, now: int) -> str:
+    return f"✅ Kirim saqlandi. {name.capitalize()} omborda: {now} ta."
+
+
+def stock_count_card(rows: list[tuple[str, int, int]]) -> str:
+    """rows: (name, before, counted)."""
+    out = ["📋 Ombor sanog'i", ""]
+    for name, before, counted in rows:
+        diff = counted - before
+        sign = "" if diff == 0 else f" ({'+' if diff > 0 else ''}{diff})"
+        out.append(f"• {name.capitalize()}: {before} → {counted}{sign}")
+    out += ["", "Farq «tuzatish» yozuvi sifatida saqlanadi. To'g'rimi?"]
+    return "\n".join(out)
+
+
+def stock_count_saved(n: int) -> str:
+    return f"✅ Sanoq saqlandi ({n} ta tur)."
+
+
+def stock_list(rows: list[tuple[str, str, int, int | None]], only: str | None = None) -> str:
+    """rows: (section code, name, qty, threshold)."""
+    out = ["📦 Ombor"]
+    last = None
+    for code, name, qty, thr in rows:
+        if code != last:
+            out += ["", f"📂 {SECTION_NAMES[code]}"]
+            last = code
+        flag = " ⚠️ manfiy" if qty < 0 else (" ⚠️ kam" if thr is not None and qty <= thr else "")
+        out.append(f"• {name.capitalize()}: {qty} ta{flag}")
+    return "\n".join(out)
+
+
+def low_stock_list(rows: list[tuple[str, str, int]]) -> str:
+    out = ["⚠️ Kam qolganlar", ""]
+    out += [f"• {name.capitalize()} ({SECTION_NAMES[code]}): {qty} ta" for code, name, qty in rows]
+    return "\n".join(out)
+
+
+NO_LOW_STOCK: Final = "Kam qolgan tovar yo'q ✅"
+
+
+def customer_sale_notice(
+    name: str,
+    section: str,
+    rows: str,
+    total: int,
+    paid: int,
+    debt: int,
+    due: date | None,
+    owed: int,
+) -> str:
+    due_txt = f"\n📅 Muddat: {format_date(due)}" if due and debt else ""
+    paid_txt = f"\nTo'langan: {money(paid)}" if paid else ""
+    return (
+        f"Assalomu alaykum, {name} 🌸\n\n"
+        f"{SECTION_NAMES[section]} bo'limidan xarid:\n{rows}\n"
+        f"Jami: {money(total)}{paid_txt}\nNasiyaga: {money(debt)}{due_txt}\n\n"
+        f"Hozir {SECTION_NAMES[section]} bo'yicha qarzingiz: {money(owed)}.\nXaridingiz uchun rahmat!"
+    )

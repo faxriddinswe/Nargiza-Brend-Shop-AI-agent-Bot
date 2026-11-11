@@ -30,6 +30,7 @@ from bot.db.models import (
     Section,
     User,
 )
+from bot.services import inventory
 from bot.services.allocation import Allocation, OpenDebt, allocate
 from bot.services.customers import CustomerNotFoundError, require_staff
 
@@ -263,6 +264,21 @@ async def create_debts(
         )
         created.append(CreatedDebt(debt.id, section_id, total, list(group)))
     await session.flush()
+    for c in created:  # Q-26: goods given on credit leave the stock too
+        qty: dict[int, int] = {}
+        for i in c.items:
+            qty[i.category_id] = qty.get(i.category_id, 0) + i.quantity
+        for cat_id, n in qty.items():
+            await inventory.add_movement(
+                session,
+                category_id=cat_id,
+                quantity=-n,
+                reason="debt",
+                ref_type="debt",
+                ref_id=c.debt_id,
+                actor_id=actor.id,
+            )
+    await session.flush()
     return created
 
 
@@ -424,6 +440,21 @@ async def cancel_debt(
     d.cancelled_at = datetime.now(UTC)
     d.cancelled_by = actor.id
     d.cancel_reason = reason
+    if d.kind == "regular":  # goods of a credit record go back to the stock
+        rows = (await session.scalars(select(DebtItem).where(DebtItem.debt_id == d.id))).all()
+        back: dict[int, int] = {}
+        for it in rows:
+            back[it.category_id] = back.get(it.category_id, 0) + it.quantity
+        for cat_id, n in back.items():
+            await inventory.add_movement(
+                session,
+                category_id=cat_id,
+                quantity=n,
+                reason="cancel",
+                ref_type="debt",
+                ref_id=d.id,
+                actor_id=actor.id,
+            )
     await session.flush()
     return d
 

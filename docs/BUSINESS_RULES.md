@@ -125,7 +125,7 @@
   ❓ Q-11: if part of the debt has already been paid and the product is returned (e.g. debt 300 000, 200 000 paid, a 300 000 product returned) — is the customer refunded 100 000 in cash?
 - **BR-085** Cross-section exchange (ko'ylak → ichki kiyim) — the amount leaves one section and enters the other; the relevant section owner is notified (BR-026).
 - **BR-086** The original record is not deleted — it moves to the `returned` status. Returns are shown separately in reports.
-- **BR-087** ❓ Q-12: is there a time limit on returns (e.g. 14 days)?
+- **BR-087** ✅ No time limit on returns (Q-12).
 
 ## 9. Stock (level 1)
 
@@ -133,7 +133,7 @@
 - **BR-091** Stock receipt: "20 ta yubka keldi" (*"20 skirts arrived"*) or a photo of the delivery note → a receipt record (with confirmation).
 - **BR-092** Sale → stock decreases; return → stock increases.
 - **BR-093** If stock goes negative — 💡 the record is saved, but with a warning: "Yubka qoldig'i −2, kirim yozilmagan bo'lishi mumkin" (*"Skirt stock is −2, a receipt may not have been recorded"*).
-- **BR-094** Low-stock warning; the threshold is set per category. ❓ Q-13
+- **BR-094** Low-stock warning; the threshold is set per category; default 3 (Q-13 ✅).
 - **BR-095** Opening stock is entered once. ❓ Q-14
 - **BR-096** Monthly stocktake: the counted quantity is entered; the difference is stored as an adjustment record.
 
@@ -227,6 +227,21 @@
 
 ---
 
+### Stage 5 decisions (owner, 2026-11-11)
+
+- **BR-071a** ✅ Mixed sale ("Ko'ylak 500 ming, 200 berdi, qolgani qarz"): the **sale is 500 000**; the report shows
+  *cash received 200 000* and *on credit 300 000* separately. The 300 000 is a linked debt (`sale_remainder`); when it
+  is paid later it counts as a payment, so cash is never counted twice.
+- **BR-072a** ✅ A sale without a customer must be fully paid in cash. Any unpaid part needs a customer.
+- **BR-073a** 💡 Discount: the sale total is what the customer actually pays; `discount = list price − agreed price`.
+  A final price **above** the list price is not accepted silently — the bot asks.
+- **BR-074a** ✅ Credit goods (nasiya) also leave the stock (Q-26). Cancelling the record puts them back.
+- **BR-084a** ✅ Return of goods that were bought on credit and partly paid: the remaining debt is closed first,
+  and the **excess is refunded in cash** (recorded as a cash refund, visible in reports).
+- **BR-087a** ✅ No time limit for returns; the card shows the date of the original sale.
+- **BR-094a** ✅ Default low-stock threshold: **3 pcs** per category (changeable per category).
+- **BR-093a** ✅ Negative stock is allowed but warned about ("Yubka qoldig'i −2, kirim yozilmagan bo'lishi mumkin").
+
 ## ❓ Open questions
 
 | # | Question | Rule |
@@ -240,10 +255,10 @@
 | Q-7 | Should the admin also receive section notifications (🔔)? | BR-028 |
 | Q-8 | **✅ yes, allowed** — Can a customer with debt be deleted without closing the debt? | BR-046 |
 | Q-9 | **✅ any staff member** — Forgiving a debt — any staff member, or only the admin? | BR-057 |
-| Q-10 | How does a mixed sale appear in reports (sale 500 000 / cash 200 000 / debt 300 000)? | BR-071 |
-| Q-11 | If a product on a partially paid debt is returned, is the excess refunded to the customer? | BR-084 |
-| Q-12 | Is there a time limit on returns? | BR-087 |
-| Q-13 | "Low stock" threshold for each category | BR-094 |
+| Q-10 | **✅ sale 500 000, cash 200 000, on credit 300 000** — How does a mixed sale appear in reports (sale 500 000 / cash 200 000 / debt 300 000)? | BR-071 |
+| Q-11 | **✅ debt closed, excess refunded in cash** — If a product on a partially paid debt is returned, is the excess refunded to the customer? | BR-084 |
+| Q-12 | **✅ no limit** — Is there a time limit on returns? | BR-087 |
+| Q-13 | **✅ default 3 pcs** — "Low stock" threshold for each category | BR-094 |
 | Q-14 | Opening stock (per category) | BR-095 |
 | Q-15 | **✅ 30 minutes** — After how many minutes does a confirmation card expire? | BR-103 |
 | Q-16 | **✅ anyone, any record, any time** — "Cancel the last record" — own records only? Is there a time limit? | BR-104 |
@@ -259,7 +274,7 @@
 | Q-26 | **✅ deducted from stock** — Does it appear in the sales report (e.g. a "sold on credit" row)? | BR-050, BR-074 |
 | Q-27 | **✅ by debt date** — In FIFO, is "oldest" the recorded date or the due date? Is the original date used for imported debts? | BR-061 |
 | Q-28 | **✅ partial allowed (up to the balance), FIFO or a chosen debt** — Forgiveness: the whole balance or a partial amount? One debt or all debts in the section? | BR-057 |
-| Q-29 | If one product is returned from a multi-product record (partial return) — do the rest stay as they are? | BR-084 |
+| Q-29 | **✅ yes, rest stays (per-item returns)** — If one product is returned from a multi-product record (partial return) — do the rest stay as they are? | BR-084 |
 | Q-30 | In a cross-section exchange, do payments already made against the old debt carry over to the new section's debt? | BR-085 |
 | Q-31 | Can a debt also have a discount ("500 lik ko'ylakni 450 ga nasiyaga berdim" — *"I gave the 500 dress on credit for 450"*)? | BR-073 |
 | Q-32 | Are reminders per debt or per customer? If the due date is extended, does the 5-reminder counter restart? | BR-163 |

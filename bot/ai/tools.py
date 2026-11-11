@@ -102,6 +102,67 @@ class WriteOff(_Args):
     heard: Annotated[str | None, Field(max_length=300)] = None
 
 
+class AddSale(_Args):
+    customer_query: Annotated[
+        str | None,
+        Field(
+            max_length=60, description="Mijoz — faqat aytilgan bo'lsa. Mijozsiz naqd savdoda BO'SH"
+        ),
+    ] = None
+    items: Annotated[list[ItemArg], Field(min_length=1, max_length=30)]
+    total_text: Annotated[
+        str | None,
+        Field(
+            max_length=40,
+            description="Kelishilgan YAKUNIY narx butun savdo uchun, aytilganidek ('500 minglik ko'ylakni 450 ga sotdim' → '450'). Chegirma aytilmasa BO'SH",
+        ),
+    ] = None
+    paid_text: Annotated[
+        str | None,
+        Field(
+            max_length=40,
+            description="Hozir qancha pul berdi ('200 berdi'). To'liq naqd bo'lsa BO'SH; qolgani nasiya bo'lsa shu yerga to'langan qismini yoz",
+        ),
+    ] = None
+    due_text: Annotated[
+        str | None,
+        Field(max_length=30, description="Nasiya qismi uchun muddat; aytilmagan bo'lsa BO'SH"),
+    ] = None
+    heard: Annotated[str | None, Field(max_length=300)] = None
+
+
+class AddStockIn(_Args):
+    item: Annotated[str, Field(min_length=1, max_length=60, description="Tovar turi")]
+    quantity: Annotated[int, Field(ge=1, le=100000, description="Nechta keldi")]
+    heard: Annotated[str | None, Field(max_length=300)] = None
+
+
+class CountItem(_Args):
+    item: Annotated[str, Field(min_length=1, max_length=60)]
+    counted: Annotated[
+        int, Field(ge=0, le=100000, description="Sanalgan (omborda haqiqatda bor) soni")
+    ]
+
+
+class StockCount(_Args):
+    counts: Annotated[
+        list[CountItem],
+        Field(min_length=1, max_length=30, description="Sanoq: «ko'ylak 45 ta, yubka 30 ta»"),
+    ]
+    heard: Annotated[str | None, Field(max_length=300)] = None
+
+
+class GetStock(_Args):
+    item: Annotated[
+        str | None, Field(max_length=60, description="Aniq tur so'ralsa; hammasi bo'lsa BO'SH")
+    ] = None
+    heard: Annotated[str | None, Field(max_length=300)] = None
+
+
+class ListLowStock(_Args):
+    heard: Annotated[str | None, Field(max_length=300)] = None
+
+
 class CreateCustomer(_Args):
     name: Annotated[str, Field(min_length=2, max_length=40)]
     form: Annotated[Literal["opa", "aka"], Field(description="Murojaat: ayol — opa, erkak — aka")]
@@ -181,6 +242,19 @@ REGISTRY: dict[str, tuple[type[_Args], str, bool]] = {
         "Qarzni kechish (pul tushmagan, hisobdan chiqarish). 'kechdim', 'kechib yubordim'.",
         True,
     ),
+    "add_sale": (
+        AddSale,
+        "Naqd yoki aralash savdo: 'sotildi', 'sotdim'. Nasiyaga (hech narsa to'lanmagan) bo'lsa add_debt.",
+        True,
+    ),
+    "add_stock_in": (AddStockIn, "Omborga kirim: 'keldi', '20 ta yubka keldi'.", True),
+    "stock_count": (
+        StockCount,
+        "Ombor sanog'i yoki boshlang'ich qoldiq: 'ko'ylak 45 ta, yubka 30 ta'.",
+        True,
+    ),
+    "get_stock": (GetStock, "Omborda nechta qoldi.", False),
+    "list_low_stock": (ListLowStock, "Nima kam qoldi.", False),
     "create_customer": (CreateCustomer, "Yangi mijoz qo'shish.", True),
     "delete_customer": (DeleteCustomer, "Mijozni ro'yxatdan o'chirish.", True),
     "cancel_last_entry": (CancelLast, "Oxirgi yozuvni bekor qilish.", True),
