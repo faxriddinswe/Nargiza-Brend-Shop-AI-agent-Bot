@@ -11,9 +11,9 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bot.db.models import AddressForm, Customer, Debt, Payment, PaymentKind, User
+from bot.db.models import AddressForm, Customer, PaymentKind, User
 from bot.services import customers as cust
-from bot.services import inventory, ledger, sales
+from bot.services import inventory, ledger, returns, sales
 from bot.services import staff as staff_svc
 from bot.services import users as users_svc
 from bot.services.ledger import ItemInput
@@ -72,6 +72,9 @@ async def execute(
 
     if action == "record_payment":
         return await _record_payment(session, actor, payload, today)
+
+    if action == "register_return":
+        return await _register_return(session, actor, payload, today)
 
     if action == "create_sale":
         return await _create_sale(session, actor, payload, today)
@@ -179,32 +182,45 @@ async def _cancel_entry(
     kind, rid = payload["kind"], int(payload["id"])
     who = await staff_svc.actor_label(session, actor)
     codes = await ledger.section_codes(session)
+    customer: Customer | None
     if kind == "debt":
         debt = await ledger.cancel_debt(session, actor, rid)
         customer = await cust.get(session, debt.customer_id, include_deleted=True)
-        amount, section_id, what = debt.total_amount, debt.section_id, t.KIND_NAMES["debt"].lower()
-        row: Debt | Payment = debt
+        amount, section_id = debt.total_amount, debt.section_id
+    elif kind == "sale":
+        sale = await sales.cancel_sale(session, actor, rid)
+        customer = (
+            await cust.get(session, sale.customer_id, include_deleted=True)
+            if sale.customer_id
+            else None
+        )
+        amount, section_id = sale.total_amount, sale.section_id
+    elif kind == "return":
+        ret = await returns.cancel_return(session, actor, rid)
+        customer = (
+            await cust.get(session, ret.customer_id, include_deleted=True)
+            if ret.customer_id
+            else None
+        )
+        amount, section_id = ret.value, ret.section_id
     else:
         pay = await ledger.cancel_payment(session, actor, rid)
         customer = await cust.get(session, pay.customer_id, include_deleted=True)
         amount, section_id = pay.amount, pay.section_id
-        what = t.KIND_NAMES[pay.kind].lower()
-        row = pay
-    del row
+        kind = pay.kind
+    what = t.KIND_NAMES[kind].lower()
     notify: Notify = []
-    if customer.deleted_at is None:
+    if customer is not None and customer.deleted_at is None and kind != "sale_cash":
         notify += await _customer_notice(
             session,
             customer,
             t.customer_correction_notice(display(customer), f"{what} ({format_amount(amount)})"),
         )
+    label = display(customer) if customer else "mijozsiz"
     notify += await _owners_notice(
-        session,
-        actor,
-        codes[section_id],
-        t.owner_cancel_notice(who, what, display(customer), amount),
+        session, actor, codes[section_id], t.owner_cancel_notice(who, what, label, amount)
     )
-    return t.cancelled_ok(kind, customer.name), notify
+    return t.cancelled_ok(kind, customer.name if customer else "mijozsiz"), notify
 
 
 async def _create_sale(
@@ -270,3 +286,107 @@ async def _create_sale(
     if warn:
         text += t.stock_warning(list(warn.items()))
     return text, notify
+
+
+async def _register_return(
+    session: AsyncSession, actor: User, payload: dict[str, Any], today: date
+) -> tuple[str, Notify]:
+    ret, plan = await returns.register_return(
+        session,
+        actor,
+        source_type=payload["source_type"],
+        source_id=int(payload["source_id"]),
+        qty_by_item={int(k): int(v) for k, v in payload["items"].items()},
+        today=today,
+        expected=tuple(payload["expected"]) if payload.get("expected") else None,
+    )
+    customer = (
+        await cust.get(session, ret.customer_id, include_deleted=True) if ret.customer_id else None
+    )
+    codes = await ledger.section_codes(session)
+    who = await staff_svc.actor_label(session, actor)
+    code = codes[ret.section_id]
+    left = plan.debt_remaining - plan.debt_reduction
+    notify: Notify = []
+    if customer is not None and customer.deleted_at is None:
+        notify += await _customer_notice(
+            session,
+            customer,
+            t.customer_return_notice(
+                display(customer), code, plan.debt_reduction, plan.cash_refund, left
+            ),
+        )
+    notify += await _owners_notice(
+        session,
+        actor,
+        code,
+        t.owner_notice(
+            who, "qaytarish yozdi", display(customer) if customer else "mijozsiz", ret.value
+        ),
+    )
+    text = t.return_saved(display(customer) if customer else None)
+    ex = payload.get("exchange")
+    if ex:
+        items = [
+            ItemInput(
+                int(i["category_id"]), int(i["quantity"]), int(i["unit_price"]), i.get("note")
+            )
+            for i in ex["items"]
+        ]
+        made = await sales.create_sales(
+            session,
+            actor,
+            customer_id=customer.id if customer else None,
+            items=items,
+            final_total=ex.get("final_total"),
+            paid=ex.get("paid"),
+            due_date=date.fromisoformat(ex["due"]) if ex.get("due") else None,
+            today=today,
+            note=f"almashtirish: qaytarish №{ret.id}",
+        )
+        text += "\n" + t.sale_saved(display(customer) if customer else None)
+        for m in made:
+            ncode = codes[m.section_id]
+            if customer is not None and m.plan.debt > 0:
+                bal = (await ledger.balances(session, customer.id)).get(m.section_id, 0)
+                rows = t.items_summary(
+                    [
+                        (c.name, i.quantity, i.unit_price, i.note)
+                        for i in m.items
+                        for c in [await _cat(session, i.category_id)]
+                    ]
+                )
+                due = date.fromisoformat(ex["due"]) if ex.get("due") else None
+                notify += await _customer_notice(
+                    session,
+                    customer,
+                    t.customer_sale_notice(
+                        display(customer),
+                        ncode,
+                        rows,
+                        m.plan.total,
+                        m.plan.paid,
+                        m.plan.debt,
+                        due,
+                        bal,
+                    ),
+                )
+            if ncode != code:
+                notify += await _owners_notice(
+                    session,
+                    actor,
+                    ncode,
+                    t.owner_notice(
+                        who,
+                        "almashtirish (yangi savdo)",
+                        display(customer) if customer else "mijozsiz",
+                        m.plan.total,
+                    ),
+                )
+    return text, notify
+
+
+async def _cat(session: AsyncSession, category_id: int) -> Any:
+    return next(
+        c for c in await ledger.categories(session, active_only=False) if c.id == category_id
+    )

@@ -265,6 +265,7 @@ class LedgerStatus(StrEnum):
 class PaymentKind(StrEnum):
     PAYMENT = "payment"  # cash came into the till
     WRITE_OFF = "write_off"  # forgiven — reported separately as a loss (BR-057)
+    RETURN = "return"  # goods taken back against a debt — neither cash nor a loss
 
 
 class CancelMixin:
@@ -364,7 +365,7 @@ class Payment(CancelMixin, Base):
     __tablename__ = "payments"
     __table_args__ = (
         CheckConstraint("amount > 0", name="amount_positive"),
-        CheckConstraint("kind IN ('payment', 'write_off')", name="kind"),
+        CheckConstraint("kind IN ('payment', 'write_off', 'return')", name="kind"),
         CheckConstraint("(kind = 'payment') = (method IS NOT NULL)", name="method_only_for_cash"),
         CheckConstraint("method IS NULL OR method IN ('cash', 'card')", name="method"),
         CheckConstraint("source IN ('manual', 'import')", name="source"),
@@ -542,3 +543,57 @@ class StockMovement(Base):
     note: Mapped[str | None] = mapped_column(Text)
     created_by: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class Return(CancelMixin, Base):
+    """Goods taken back. value = debt_reduction (closes debt) + cash_refund (money handed back)."""
+
+    __tablename__ = "returns"
+    __table_args__ = (
+        CheckConstraint("source_type IN ('sale', 'debt')", name="source_type"),
+        CheckConstraint("value > 0 AND debt_reduction >= 0 AND cash_refund >= 0", name="amounts"),
+        CheckConstraint("value = debt_reduction + cash_refund", name="split"),
+        CheckConstraint(
+            "(debt_reduction > 0) = (return_payment_id IS NOT NULL)", name="payment_link"
+        ),
+        CheckConstraint("status IN ('active', 'cancelled')", name="status"),
+        CheckConstraint(
+            "(status = 'cancelled') = (cancelled_at IS NOT NULL)", name="cancel_fields"
+        ),
+        Index("ix_returns_source", "source_type", "source_id"),
+        Index(
+            "ix_returns_customer", "customer_id", postgresql_where=text("customer_id IS NOT NULL")
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    section_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("sections.id"))
+    customer_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("customers.id"))
+    source_type: Mapped[str] = mapped_column(Text)
+    source_id: Mapped[int] = mapped_column(BigInteger)
+    value: Mapped[int] = mapped_column(BigInteger)
+    debt_reduction: Mapped[int] = mapped_column(BigInteger, server_default="0")
+    cash_refund: Mapped[int] = mapped_column(BigInteger, server_default="0")
+    return_payment_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("payments.id"))
+    return_date: Mapped[date]
+    note: Mapped[str | None] = mapped_column(Text)
+    cancelled_by: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.id"))
+    created_by: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class ReturnItem(Base):
+    __tablename__ = "return_items"
+    __table_args__ = (
+        CheckConstraint("quantity > 0 AND value > 0", name="positive"),
+        Index("ix_return_items_return", "return_id"),
+        Index("ix_return_items_source", "source_item_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    return_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("returns.id"))
+    source_item_id: Mapped[int] = mapped_column(BigInteger)
+    category_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("categories.id"))
+    quantity: Mapped[int] = mapped_column(Integer)
+    value: Mapped[int] = mapped_column(BigInteger)

@@ -62,6 +62,10 @@ class DueDatePassedError(LedgerError):
     """The due date on the card is now in the past (card confirmed after midnight)."""
 
 
+class DebtHasReturnsError(LedgerError):
+    """Goods of this record were already taken back — cancel the return first."""
+
+
 class DebtHasPaymentsError(LedgerError):
     """BR-104 💡: cancel the payments first."""
 
@@ -428,6 +432,10 @@ async def cancel_debt(
     await session.refresh(d)
     if d.status != LedgerStatus.ACTIVE:
         raise AlreadyCancelledError
+    from bot.services import returns
+
+    if d.kind == "regular" and await returns.active_returns_count(session, "debt", d.id):
+        raise DebtHasReturnsError
     has_payments = await session.scalar(
         select(func.count())
         .select_from(PaymentAllocation)
@@ -488,7 +496,7 @@ async def recent_entries(
     pay_q = (
         select(Payment.id, Payment.customer_id, Customer.name, Payment.section_id, Payment.amount, Payment.created_at, Payment.created_by, Payment.kind)
         .join(Customer, Customer.id == Payment.customer_id)
-        .where(Payment.status == LedgerStatus.ACTIVE)
+        .where(Payment.status == LedgerStatus.ACTIVE, Payment.kind != "return")
         .order_by(Payment.created_at.desc())
         .limit(limit)
     )  # fmt: skip
@@ -498,6 +506,33 @@ async def recent_entries(
     entries += [
         Entry(kind, pid, cid, name, sid, amt, at, by)
         for pid, cid, name, sid, amt, at, by, kind in (await session.execute(pay_q)).all()
+    ]
+    from bot.db.models import Return, Sale
+
+    sale_q = (
+        select(Sale.id, Sale.customer_id, Customer.name, Sale.section_id, Sale.total_amount, Sale.created_at, Sale.created_by)
+        .outerjoin(Customer, Customer.id == Sale.customer_id)
+        .where(Sale.status == LedgerStatus.ACTIVE)
+        .order_by(Sale.created_at.desc())
+        .limit(limit)
+    )  # fmt: skip
+    ret_q = (
+        select(Return.id, Return.customer_id, Customer.name, Return.section_id, Return.value, Return.created_at, Return.created_by)
+        .outerjoin(Customer, Customer.id == Return.customer_id)
+        .where(Return.status == LedgerStatus.ACTIVE)
+        .order_by(Return.created_at.desc())
+        .limit(limit)
+    )  # fmt: skip
+    if customer_id is not None:
+        sale_q = sale_q.where(Sale.customer_id == customer_id)
+        ret_q = ret_q.where(Return.customer_id == customer_id)
+    entries += [
+        Entry("sale", sid, cid or 0, name or "mijozsiz", sec, amt, at, by)
+        for sid, cid, name, sec, amt, at, by in (await session.execute(sale_q)).all()
+    ]
+    entries += [
+        Entry("return", rid, cid or 0, name or "mijozsiz", sec, amt, at, by)
+        for rid, cid, name, sec, amt, at, by in (await session.execute(ret_q)).all()
     ]
     entries.sort(key=lambda e: e.created_at, reverse=True)
     return entries[:limit]

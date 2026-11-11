@@ -163,6 +163,48 @@ class ListLowStock(_Args):
     heard: Annotated[str | None, Field(max_length=300)] = None
 
 
+class RegisterReturn(_Args):
+    customer_query: Annotated[
+        str | None, Field(max_length=60, description="Kim qaytardi (aytilgan bo'lsa)")
+    ] = None
+    item: Annotated[
+        str,
+        Field(
+            min_length=1,
+            max_length=60,
+            description="QAYTARILGAN tovar turi ('ko'ylakni qaytardi' → 'ko'ylak')",
+        ),
+    ]
+    quantity: Annotated[
+        int | None, Field(ge=1, le=1000, description="Nechta qaytardi. Aytilmagan bo'lsa BO'SH")
+    ] = None
+    new_items: Annotated[
+        list[ItemArg] | None,
+        Field(
+            max_length=30,
+            description="ALMASHTIRISH: o'rniga olingan yangi tovar(lar) ('o'rniga oyoq kiyim oldi'). Faqat qaytarish bo'lsa BO'SH",
+        ),
+    ] = None
+    total_text: Annotated[
+        str | None,
+        Field(
+            max_length=40,
+            description="Yangi tovar uchun kelishilgan yakuniy narx (chegirma bo'lsa)",
+        ),
+    ] = None
+    paid_text: Annotated[
+        str | None,
+        Field(
+            max_length=40,
+            description="Yangi tovarga hozir qancha pul berdi; to'liq naqd bo'lsa BO'SH",
+        ),
+    ] = None
+    due_text: Annotated[
+        str | None, Field(max_length=30, description="Yangi tovarning nasiya qismi muddati")
+    ] = None
+    heard: Annotated[str | None, Field(max_length=300)] = None
+
+
 class CreateCustomer(_Args):
     name: Annotated[str, Field(min_length=2, max_length=40)]
     form: Annotated[Literal["opa", "aka"], Field(description="Murojaat: ayol — opa, erkak — aka")]
@@ -255,6 +297,11 @@ REGISTRY: dict[str, tuple[type[_Args], str, bool]] = {
     ),
     "get_stock": (GetStock, "Omborda nechta qoldi.", False),
     "list_low_stock": (ListLowStock, "Nima kam qoldi.", False),
+    "register_return": (
+        RegisterReturn,
+        "Tovar qaytarildi yoki almashtirildi: 'qaytardi', 'o'rniga ... oldi'.",
+        True,
+    ),
     "create_customer": (CreateCustomer, "Yangi mijoz qo'shish.", True),
     "delete_customer": (DeleteCustomer, "Mijozni ro'yxatdan o'chirish.", True),
     "cancel_last_entry": (CancelLast, "Oxirgi yozuvni bekor qilish.", True),

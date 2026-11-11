@@ -14,7 +14,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.db.models import Customer, PaymentKind, User
-from bot.services import ledger, pending
+from bot.services import ledger, pending, returns
 from bot.services import staff as staff_svc
 from bot.texts import uz_latn as t
 from bot.utils.dates import TASHKENT
@@ -265,3 +265,73 @@ async def stock_count_card(session: AsyncSession, actor: User, counts: dict[int,
         payload={"counts": {str(k): v for k, v in counts.items()}},
     )
     return Card(key, t.stock_count_card([(d.name, d.before, d.counted) for d in plan]))
+
+
+async def return_card(
+    session: AsyncSession,
+    actor: User,
+    plan: returns.ReturnPlan,
+    *,
+    exchange_items: Sequence[ledger.ItemInput] | None = None,
+    final_total: int | None = None,
+    paid: int | None = None,
+    due: date | None = None,
+) -> Card:
+    """Return (and optional exchange) card. Raises SaleMathError subclasses for the new purchase."""
+    from bot.services.sale_math import plan_sale
+    from bot.services.sales import MultiSectionOverrideError
+
+    src = plan.source
+    codes = await ledger.section_codes(session)
+    cats = {c.id: c for c in await ledger.categories(session, active_only=False)}
+    exchange_text = None
+    payload_ex = None
+    if exchange_items:
+        groups = ledger.split_by_section(exchange_items, {i: c.section_id for i, c in cats.items()})
+        if len(groups) > 1 and (final_total is not None or paid is not None):
+            raise MultiSectionOverrideError
+        card_groups = []
+        cash_in = 0
+        for sid, group in sorted(groups.items()):
+            sp = plan_sale(
+                sum(i.total for i in group),
+                final_total=final_total,
+                paid=paid,
+                has_customer=src.customer_id is not None,
+            )
+            rows = [(cats[i.category_id].name, i.quantity, i.unit_price, i.note) for i in group]
+            card_groups.append((codes[sid], rows, sp.items_total, sp.discount, sp.paid, sp.debt))
+            cash_in += sp.paid
+        exchange_text = (card_groups, cash_in - plan.cash_refund)
+        payload_ex = {
+            "items": [
+                {
+                    "category_id": i.category_id,
+                    "quantity": i.quantity,
+                    "unit_price": i.unit_price,
+                    "note": i.note,
+                }
+                for i in exchange_items
+            ],
+            "final_total": final_total,
+            "paid": paid,
+            "due": due.isoformat() if due else None,
+        }
+    key = await pending.create(
+        session,
+        user_id=actor.id,
+        action="register_return",
+        payload={
+            "source_type": src.type,
+            "source_id": src.id,
+            "items": {str(line.source_item_id): line.quantity for line in plan.lines},
+            "expected": [plan.value, plan.debt_reduction, plan.cash_refund],
+            "exchange": payload_ex,
+        },
+    )
+    text = t.return_card(
+        src.customer_name, codes[src.section_id], src.when,
+        [(line.name, line.quantity, line.value) for line in plan.lines],
+        plan.value, plan.debt_reduction, plan.cash_refund, exchange_text,
+    )  # fmt: skip
+    return Card(key, text)

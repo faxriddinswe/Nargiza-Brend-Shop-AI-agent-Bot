@@ -167,7 +167,7 @@ async def resolve_category(session: AsyncSession, text: str) -> ledger.CategoryR
 
 
 async def _all_choices_for_item(
-    session: AsyncSession, call: ToolCall, idx: int, fix: dict[str, Any], item: str
+    session: AsyncSession, call: ToolCall, idx: int | str, fix: dict[str, Any], item: str
 ) -> Outcome:
     mapping = dict(fix.get("item_categories", {}))
     choices = []
@@ -311,6 +311,161 @@ async def _add_sale(
     try:
         card = await cards.sale_card(
             session, actor, customer, items, final_total=final_total, paid=paid, due=due
+        )
+    except PriceAboveListError:
+        return Outcome(text=t.PRICE_ABOVE_LIST, customer_id=cid)
+    except PaidAboveTotalError as e:
+        return Outcome(
+            text=t.overpay(cards.who(customer) if customer else "Mijoz", e.total, e.paid),
+            customer_id=cid,
+        )
+    except CustomerRequiredError:
+        return Outcome(question=t.SALE_NEEDS_CUSTOMER)
+    except MultiSectionOverrideError:
+        return Outcome(text=t.MULTI_SECTION_PRICE, customer_id=cid)
+    except SaleMathError:
+        return Outcome(text=t.AI_NOT_UNDERSTOOD, customer_id=cid)
+    return Outcome(text=_with_assumed(card.text, assumed), card=card, customer_id=cid)
+
+
+async def _register_return(
+    session: AsyncSession,
+    actor: User,
+    call: ToolCall,
+    args: tools.RegisterReturn,
+    fix: dict[str, Any],
+    ctx: Context,
+) -> Outcome:
+    from bot.services import returns
+    from bot.services.sale_math import (
+        CustomerRequiredError,
+        PaidAboveTotalError,
+        PriceAboveListError,
+        SaleMathError,
+    )
+    from bot.services.sales import MultiSectionOverrideError
+
+    customer: Customer | None = None
+    if args.customer_query or fix.get("customer_id"):
+        c = await _customer(session, call, args.customer_query, fix, ctx)
+        if isinstance(c, Outcome):
+            return c
+        customer = c
+    cid = customer.id if customer else None
+    # 1. which product came back
+    cat_map = fix.get("item_categories", {})
+    cat = (
+        next(
+            (
+                x
+                for x in await ledger.categories(session)
+                if "ret" in cat_map and x.id == int(cat_map["ret"])
+            ),
+            None,
+        )
+        if "ret" in cat_map
+        else await resolve_category(session, args.item)
+    )
+    if cat is None:
+        return await _all_choices_for_item(session, call, "ret", fix, args.item)
+    # 2. which purchase it came from
+    src_key = fix.get("source")
+    if src_key is None:
+        found = await returns.returnable_sources(session, customer_id=cid, category_id=cat.id)
+        if not found:
+            return Outcome(text=t.RETURN_NOT_FOUND, customer_id=cid)
+        if len(found) > 1:
+            choices = [
+                Choice(
+                    t.return_source_label(
+                        v.when, v.type, ", ".join(i.name for i in v.items), v.total
+                    )[:60],
+                    {"source": f"{v.type}:{v.id}"},
+                )
+                for v in found[:6]
+            ]
+            return Outcome(
+                question=t.RETURN_SOURCE_QUESTION, choices=choices, resume=call, customer_id=cid
+            )
+        src_key = f"{found[0].type}:{found[0].id}"
+    typ, _, raw_id = str(src_key).partition(":")
+    try:
+        src = await returns.source_view(session, typ, int(raw_id))
+    except (returns.ReturnError, ValueError):
+        return Outcome(text=t.RETURN_NOT_FOUND, customer_id=cid)
+    if customer is None and src.customer_id is not None:
+        customer = await cust.get(session, src.customer_id, include_deleted=True)
+        cid = customer.id
+    items = [i for i in src.items if i.category_id == cat.id and i.returnable > 0]
+    available = sum(i.returnable for i in items)
+    if not items:
+        return Outcome(text=t.RETURN_NOT_FOUND, customer_id=cid)
+    # 3. how many
+    qty = fix.get("quantity", args.quantity)
+    if qty is None:
+        if available == 1:
+            qty = 1
+        else:
+            return Outcome(
+                question=t.RETURN_QTY_QUESTION,
+                choices=[
+                    Choice(f"{n} ta", {"quantity": n}) for n in range(1, min(available, 6) + 1)
+                ],
+                resume=call,
+                customer_id=cid,
+            )
+    qty = int(qty)
+    if not 1 <= qty <= available:
+        return Outcome(text=t.RETURN_NOT_FOUND, customer_id=cid)
+    qty_by_item: dict[int, int] = {}
+    left = qty
+    for i in items:
+        take = min(left, i.returnable)
+        qty_by_item[i.id] = take
+        left -= take
+        if not left:
+            break
+    try:
+        plan = await returns.plan_return(session, typ, int(raw_id), qty_by_item)
+    except returns.ReturnError:
+        return Outcome(text=t.RETURN_NOT_FOUND, customer_id=cid)
+    # 4. exchange: the new goods
+    new_items: list[ledger.ItemInput] | None = None
+    final_total = paid = None
+    due: date | None = None
+    assumed: list[tuple[str, int]] = []
+    if args.new_items:
+        resolved = await _resolve_items(session, call, args.new_items, fix, cid)
+        if isinstance(resolved, Outcome):
+            return resolved
+        new_items, assumed = resolved
+        try:
+            if args.total_text:
+                final_total = parse_amount(args.total_text).value
+            if args.paid_text:
+                paid = parse_amount(args.paid_text).value
+        except AmountParseError:
+            return Outcome(question=t.ai_amount_question(), customer_id=cid)
+        if paid is not None and customer is not None:
+            due_text = fix.get("due_text", args.due_text)
+            if due_text is None:
+                if paid < (
+                    final_total if final_total is not None else sum(i.total for i in new_items)
+                ):
+                    return _due_question(call, cid)
+            else:
+                understood, due = parse_due_text(due_text, ctx.today)
+                if not understood:
+                    return Outcome(question=t.ai_due_question(), customer_id=cid)
+    try:
+        card = await cards.return_card(
+            session,
+            actor,
+            plan,
+            exchange_items=new_items,
+            final_total=final_total,
+            paid=paid,
+            due=due,
         )
     except PriceAboveListError:
         return Outcome(text=t.PRICE_ABOVE_LIST, customer_id=cid)
@@ -707,6 +862,8 @@ async def run_call(session: AsyncSession, actor: User, call: ToolCall, ctx: Cont
         outcome = await _add_debt(session, actor, call, args, fix, ctx)
     elif isinstance(args, tools.AddSale):
         outcome = await _add_sale(session, actor, call, args, fix, ctx)
+    elif isinstance(args, tools.RegisterReturn):
+        outcome = await _register_return(session, actor, call, args, fix, ctx)
     elif isinstance(args, tools.AddStockIn):
         outcome = await _stock_in(session, actor, call, args, fix, ctx)
     elif isinstance(args, tools.StockCount):

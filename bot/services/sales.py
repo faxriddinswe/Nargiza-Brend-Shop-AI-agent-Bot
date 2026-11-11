@@ -154,6 +154,10 @@ async def cancel_sale(
     await session.refresh(sale)
     if sale.status != LedgerStatus.ACTIVE:
         raise ledger.AlreadyCancelledError
+    from bot.services import returns
+
+    if await returns.active_returns_count(session, "sale", sale.id):
+        raise SaleHasReturnsError
     linked = await session.scalar(
         select(Debt).where(Debt.sale_id == sale.id, Debt.status == LedgerStatus.ACTIVE)
     )

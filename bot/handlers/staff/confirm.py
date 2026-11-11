@@ -18,10 +18,11 @@ from bot.handlers.staff.actions import execute
 from bot.keyboards import common as kb
 from bot.middlewares.auth import RoleFilter
 from bot.services import customers as cust
-from bot.services import ledger, pending
+from bot.services import ledger, pending, returns, sales
 from bot.services import staff as staff_svc
 from bot.services import users as users_svc
 from bot.services.allocation import AllocationError
+from bot.services.sale_math import SaleMathError
 from bot.texts import uz_latn as t
 from bot.utils.guards import required
 
@@ -41,6 +42,10 @@ _ALERTS: tuple[tuple[type[Exception], str], ...] = (
     (ledger.DueDatePassedError, t.DUE_PASSED),
     (AllocationError, t.PAY_CHANGED),
     (ledger.DebtHasPaymentsError, t.CANCEL_HAS_PAYMENTS),
+    (ledger.DebtHasReturnsError, t.CANCEL_HAS_RETURNS),
+    (sales.SaleHasReturnsError, t.CANCEL_HAS_RETURNS),
+    (returns.ReturnError, t.PAY_CHANGED),
+    (SaleMathError, t.PAY_CHANGED),
     (ledger.AlreadyCancelledError, t.CANCEL_ALREADY),
     (cust.CustomerNotFoundError, t.CUSTOMER_NOT_FOUND),
     (cust.NotAllowedError, t.CARD_NOT_YOURS),

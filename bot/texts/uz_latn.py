@@ -478,7 +478,13 @@ CANCEL_HAS_PAYMENTS: Final = (
     "Bu qarzga to'lov yozilgan, shuning uchun avval to'lovni bekor qilish kerak."
 )
 CANCEL_ALREADY: Final = "Bu yozuv allaqachon bekor qilingan."
-KIND_NAMES: Final = {"debt": "Qarz", "payment": "To'lov", "write_off": "Kechish"}
+KIND_NAMES: Final = {
+    "debt": "Qarz",
+    "payment": "To'lov",
+    "write_off": "Kechish",
+    "sale": "Savdo",
+    "return": "Qaytarish",
+}
 
 
 def recent_button(kind: str, name: str, amount: int, when: date) -> str:
@@ -582,7 +588,9 @@ def my_debt(sections: list[tuple[str, int, list[str], list[str]]]) -> str:
 
 
 def my_payment_line(paid_on: date, kind: str, amount: int) -> str:
-    mark = "to'lov" if kind == "payment" else "kechildi"
+    mark = {"payment": "to'lov", "write_off": "kechildi", "return": "qaytarilgan tovar"}.get(
+        kind, kind
+    )
     return f"• {format_date(paid_on)} — {money(amount)} ({mark})"
 
 
@@ -860,3 +868,78 @@ def customer_sale_notice(
         f"Jami: {money(total)}{paid_txt}\nNasiyaga: {money(debt)}{due_txt}\n\n"
         f"Hozir {SECTION_NAMES[section]} bo'yicha qarzingiz: {money(owed)}.\nXaridingiz uchun rahmat!"
     )
+
+
+# ============================================================ Stage 5b: returns and exchanges
+RETURN_NOT_FOUND: Final = "Bunday xarid topilmadi. Mijoz ismini yoki tovarni aniqroq ayting."
+CANCEL_HAS_RETURNS: Final = "Bu yozuvdagi tovar qaytarilgan. Avval qaytarishni bekor qilish kerak."
+RETURN_QTY_QUESTION: Final = "Nechtasini qaytardi?"
+RETURN_SOURCE_QUESTION: Final = "Qaysi xariddan qaytardi?"
+
+
+def return_source_label(when: date, kind: str, names: str, total: int) -> str:
+    what = "savdo" if kind == "sale" else "nasiya"
+    return f"{format_date(when)} · {what} · {names} · {money(total)}"
+
+
+def return_card(
+    customer: str | None,
+    section: str,
+    when: date,
+    lines: list[tuple[str, int, int]],
+    value: int,
+    reduction: int,
+    refund: int,
+    exchange: tuple[
+        list[tuple[str, list[tuple[str, int, int, str | None]], int, int, int, int]], int
+    ]
+    | None,
+) -> str:
+    """lines: (name, qty, value). exchange: (sale groups as in sale_card, net cash)."""
+    out = [
+        "↩️ Qaytarish" + (" va almashtirish" if exchange else ""),
+        f"👤 {customer}" if customer else "👤 Mijozsiz",
+    ]
+    out += [f"📂 Bo'lim: {SECTION_NAMES[section]} · xarid sanasi {format_date(when)}", ""]
+    out += [f"• {name.capitalize()} ×{q} — {money(v)}" for name, q, v in lines]
+    out += ["", f"Qaytarish qiymati: {money(value)}"]
+    if reduction:
+        out.append(f"  📝 Qarzdan ayiriladi: {money(reduction)}")
+    if refund:
+        out.append(f"  💵 Mijozga naqd qaytariladi: {money(refund)}")
+    if exchange:
+        groups, net = exchange
+        out += ["", "🔁 Almashtirish — yangi tovar:"]
+        for _code, rows, list_total, discount, paid, debt in groups:
+            out.append(items_summary(rows))
+            if discount:
+                out.append(f"Chegirma: −{money(discount)}")
+            out.append(
+                f"Savdo: {money(list_total - discount)} · naqd {money(paid)}"
+                + (f" · nasiyaga {money(debt)}" if debt else "")
+            )
+        if net > 0:
+            out += ["", f"➡️ Sof: mijoz {money(net)} qo'shib beradi"]
+        elif net < 0:
+            out += ["", f"➡️ Sof: mijozga {money(-net)} qaytariladi"]
+        else:
+            out += ["", "➡️ Sof: farq yo'q"]
+    out += ["", "To'g'rimi?"]
+    return "\n".join(out)
+
+
+def return_saved(customer: str | None) -> str:
+    return f"✅ Qaytarish saqlandi{': ' + customer if customer else ''}."
+
+
+def customer_return_notice(name: str, section: str, reduction: int, refund: int, left: int) -> str:
+    parts = [f"{name}, {SECTION_NAMES[section]} bo'limi bo'yicha tovaringiz qaytarib olindi ✅"]
+    if reduction:
+        parts.append(
+            f"Qarzingizdan {money(reduction)} ayirildi. "
+            + (f"Qolgan qarz: {money(left)}." if left else "Qarzingiz yopildi.")
+        )
+    if refund:
+        parts.append(f"Sizga {money(refund)} naqd qaytarildi.")
+    parts.append("Rahmat!")
+    return "\n".join(parts)
