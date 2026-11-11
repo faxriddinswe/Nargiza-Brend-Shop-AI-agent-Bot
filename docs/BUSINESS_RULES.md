@@ -1,6 +1,6 @@
 # Biznes qoidalar
 
-> **Holat:** QORALAMA — Faxriddin tasdiqlashi kerak (0-bosqich qabul mezoni).
+> **Holat:** QISMAN TASDIQLANGAN (2026-11-11). `✅ Javob:` — Faxriddin hal qilgan; qolgan ❓ savollar tegishli bosqichdan oldin so'raladi.
 > Manba: `NARGIZA_BREND_MASTER_PROMPT.md`, 2–7 va 13-bo'limlar.
 > Har bir qoida raqamlangan (`BR-xxx`) — kod, test va review'larda shu raqamga havola qilinadi.
 > `❓ Q-n` — hali hal qilinmagan savol (oxiridagi ro'yxatga qarang). Javobsiz qoida kodga yozilmaydi.
@@ -12,7 +12,7 @@
 
 - **BR-001** Nomi: Nargiza Brend. Manzil: Sherbaraka bozori, 82-do'kon. Ish vaqti: 07:00–18:00. Telefon: +998 95 511 17 00. Instagram: @nargiza_17_00_.
 - **BR-002** Vaqt zonasi — `Asia/Tashkent`. "Bugun", "bu oy" va boshqa barcha davrlar Toshkent vaqti bo'yicha (kun 00:00 da boshlanadi). DB'da vaqt `timestamptz`.
-- **BR-003** Dam olish kuni, xarita lokatsiyasi, do'kon rasmi/logotipi — admin sozlamadan kiritadi. ❓ Q-2, Q-3
+- **BR-003** ✅ Dam olish kuni yo'q — do'kon har kuni ishlaydi (sozlamada o'zgartirish mumkin bo'lib qoladi). Xarita lokatsiyasi, do'kon rasmi/logotipi — admin sozlamadan kiritadi. ❓ Q-3
 - **BR-004** Barcha pul — butun so'm. Tiyin yo'q, kasr yo'q.
 
 ## 2. Foydalanuvchilar va rollar
@@ -20,7 +20,8 @@
 - **BR-010** Rollar: `admin`, `staff`, `customer`.
 - **BR-011** Botga kirgan har bir kishi avtomatik `customer` bo'ladi.
 - **BR-012** `staff` rolini faqat admin beradi va oladi. Bot hech qachon o'zi xodim qilmaydi.
-- **BR-013** Birinchi admin(lar) `.env` dagi `ADMIN_TELEGRAM_IDS` dan olinadi.
+  ✅ Javob: admin bot ichida xodimni **telefon raqami** bilan qo'shadi (ism, murojaat, bo'lim egaligi bilan). O'sha odam /start bosib raqamini ulashganda (BR-152 tekshiruvi bilan) avtomatik `staff` bo'ladi. Allaqachon ro'yxatdan o'tgan bo'lsa — darhol.
+- **BR-013** Birinchi admin `.env` dagi `ADMIN_PHONES` (telefon) orqali aniqlanadi: shu raqam egasi raqamini ulashganda `admin` bo'ladi. `ADMIN_TELEGRAM_IDS` ham qo'llab-quvvatlanadi (zaxira yo'l).
 - **BR-014** Admin barcha foydalanuvchilarni, ularning sonini, telefonlarini va barcha ma'lumotni ko'radi va o'zgartiradi. Admin xodimning barcha imkoniyatlariga ega. Faqat adminga: xodim tayinlash/olish, xodimni bloklash, bot sozlamalari, o'chirilgan yozuvlarni qaytarish.
 - **BR-015** Bloklangan xodim (masalan telefoni yo'qolsa) darhol hech qanday amal bajara olmaydi — 💡 keyingi xabaridan boshlab.
 - **BR-016a** Admin paneli: bot holati, xatolar, qayta ishga tushirish. Botni yangilash (yangi kod) — faqat serverga deploy orqali, bot ichidan emas.
@@ -49,7 +50,7 @@
 |---|---|
 | shop | ko'ylak, yubka, shim, kofta, bluzka, kurtka/palto, oyoq kiyim, sumka, aksessuar |
 | lingerie | ichki kiyim |
-| ❓ Q-1 | pijama, xalat |
+| shop | ✅ pijama, xalat (Javob: Do'kon bo'limi) |
 
 - **BR-030** Har bir turda sinonimlar ro'yxati (lotin va kirill): masalan "туфли", "tufli", "poyabzal", "tufli", "krossovka" → oyoq kiyim. Sinonimlarni admin to'ldiradi.
 - **BR-031** 💡 Tur o'chirilsa (`is_active=false`) eski yozuvlar saqlanadi, yangi yozuvda tanlanmaydi.
@@ -69,7 +70,7 @@
 
 - **BR-050** Qarz: mijoz (majburiy), bo'lim, tovarlar (tur + izoh + soni + narx), summa, sana, muddat, kim yozdi.
 - **BR-051** "qarz", "nasiya" so'zlari → qarz yozuvi.
-- **BR-052** Muddat odatda belgilanadi. ❓ Q-4: muddat aytilmasa — sukut nechchi kun (masalan 30)? Yoki muddatsiz qarz bo'lishi mumkinmi?
+- **BR-052** ✅ Muddat aytilmasa bot yozish paytida "Muddati qachon?" deb so'raydi; "muddatsiz" javobi ham qabul qilinadi. Muddatsiz qarzlar har kuni 08:00 ro'yxatida "📅 Muddati belgilanmagan qarzlar" bo'limida [📅 Muddat belgilash] tugmasi bilan chiqadi. Muddatsiz qarzga muddat eslatmalari (BR-161…163) yuborilmaydi.
 - **BR-053** 💡 Oddiy qarz summasi = tovarlar (soni × narx) yig'indisi. Istisno: aralash savdodagi bog'langan qarz (BR-071) — summasi to'lanmagan qoldiq, tovarlar savdo yozuvida. Summa > 0.
 - **BR-054** Qarz yozilganda mijozga avtomatik xabar (agar botda ro'yxatdan o'tgan bo'lsa): nima oldi, summa, muddat, umumiy qarz.
 - **BR-055** Qoldiq saqlanmaydi. Har safar hisoblanadi: `qarzlar − to'lovlar − kechilganlar ± tuzatishlar` (o'chirilgan va bekor qilingan yozuvlarsiz).
@@ -77,17 +78,17 @@
 - **BR-057** "Qarzini o'chir/yop" deyilsa bot so'raydi: [💵 To'ladi] [🤝 Kechib yuborildi] [❌ Bekor].
   - "To'ladi" = to'lov (kassaga pul tushdi).
   - "Kechib yuborildi" = write-off (hisobotda zarar sifatida alohida).
-  - Bu ikki tur hech qachon aralashmaydi. ❓ Q-9: kechib yuborishni har qanday xodim qila oladimi yoki faqat admin?
+  - Bu ikki tur hech qachon aralashmaydi. ✅ Javob: kechib yuborishni har qanday xodim va admin qila oladi (tasdiq bilan, audit log'da kim qilgani yoziladi).
 
 ## 6. To'lovlar
 
 - **BR-060** "Umida 100 ming berdi" → to'lov.
-- **BR-061** Taqsimot sukut bo'yicha FIFO — eng eski qarzdan boshlab yopiladi. 💡 Bir xil vaqtdagi qarzlar — ID tartibida (barqaror). ❓ Q-27: "eng eski" — yozilgan sana bo'yichami yoki muddat bo'yicha?
+- **BR-061** Taqsimot sukut bo'yicha FIFO — eng eski qarzdan boshlab yopiladi. 💡 Bir xil vaqtdagi qarzlar — ID tartibida (barqaror). ✅ Javob: "eng eski" = qarz sanasi bo'yicha (import qilinganlarda — daftardagi asl sana).
 - **BR-062** Xodim aniq qarzni aytsa ("oyoq kiyim qarzidan ayir") — o'sha qarzdan.
 - **BR-063** Tasdiqlash kartasida qaysi qarz(lar)dan qancha yopilayotgani ko'rinadi.
 - **BR-064** Qisman to'lov mumkin.
-- **BR-065** To'lov qoldiqdan ko'p bo'lsa — ogohlantirish va so'rash. ❓ Q-5: ortiqcha qismi nima bo'ladi — (a) rad etiladi, faqat qoldiqqa teng qabul qilinadi; (b) mijoz avansi sifatida saqlanadi?
-- **BR-066** ❓ Q-6: Mijozning ikkala bo'limda qarzi bo'lsa va xodim bo'lim aytmasa ("Umida 100 ming berdi") — (a) bot so'raydi "Qaysi bo'lim qarzidan?"; (b) ikkala bo'lim bo'yicha umumiy FIFO?
+- **BR-065** ✅ To'lov qoldiqdan ko'p bo'lsa — rad etiladi. Bot qoldiqni ko'rsatadi va summani to'g'rilashni so'raydi: "Umida opaning qarzi 250 000 so'm. 300 000 dan ko'p — summani tekshirib bering."
+- **BR-066** ✅ Mijozning ikkala bo'limda qarzi bo'lsa va bo'lim aytilmasa — bot so'raydi: "Qaysi bo'lim qarzidan?" (har bo'lim qoldig'i ko'rsatiladi). Taxmin qilmaydi.
 - **BR-067** Karta raqamlari va chek yuborish — `ENABLE_CARD_PAYMENTS=false`. Kod tayyor, menyu va eslatmalarda ko'rinmaydi.
 
 ## 7. Savdo
@@ -97,7 +98,7 @@
   ❓ Q-10: aralash savdoda kassaga 200 000 tushdi. Hisobotda "savdo" 500 000 deb ko'rsatilsinmi (tovar narxi), "kassaga tushgan" esa alohida 200 000 bo'lsinmi? (Taklif: ha — savdo 500 000, naqd tushum 200 000, qarzga 300 000; keyin qarz to'lansa — to'lov sifatida.)
 - **BR-072** To'lov turi noaniq bo'lsa: "Naqd sotildimi yoki nasiyagami?"
 - **BR-073** Chegirma: "500 minglik ko'ylakni 450 ga sotdim" → savdo 450 000, chegirma 50 000 alohida maydonda saqlanadi (master: "izohda"; 💡 alohida maydon — hisobotda jamlash uchun). Oylik hisobotda jami chegirma.
-- **BR-074** Savdo omborni avtomatik kamaytiradi.
+- **BR-074** Savdo omborni avtomatik kamaytiradi. ✅ Nasiyaga (qarzga) berilgan tovar ham ombordan ayiriladi.
 - **BR-075** Kelish narxi va foyda hisoblanmaydi.
 
 ## 8. Qaytarish va almashtirish
@@ -199,7 +200,7 @@
 
 | Qoida | Vaqt | Kimga | Vazifa |
 |---|---|---|---|
-| BR-180 | Har kuni 08:00 | Xodimlar | Qo'ng'iroq ro'yxati: muddati o'tganlar (summa, bosiladigan telefon) + telefoni yo'q qarzdorlar. Dam olish kunida yuborilmaydi |
+| BR-180 | Har kuni 08:00 | Xodimlar | Qo'ng'iroq ro'yxati: muddati o'tganlar (summa, bosiladigan telefon) + telefoni yo'q qarzdorlar + muddati belgilanmagan qarzlar (BR-052). Dam olish kuni yo'q — har kuni |
 | BR-181 | Har kuni 20:00 | Xodimlar | Kunlik hisobot: bo'limlar alohida, tovar turlari, qaytarishlar, chegirmalar, to'lovlar, yangi mijozlar soni + "kassadagi pul bilan solishtiring" |
 | BR-182 | Har kuni | Mijozlar | Muddat eslatmalari (BR-161…163) |
 | BR-183 | Har soat | — | Backup (48 soat saqlanadi) |
@@ -216,15 +217,15 @@
 
 | # | Savol | Qoida |
 |---|---|---|
-| Q-1 | Pijama, xalat qaysi bo'limga? Tovar turlari ro'yxati to'g'rimi, nimadir qo'shilsinmi (masalan: kostyum, sharf/ro'mol, paypoq, kolgotka)? | 3.1 |
-| Q-2 | Dam olish kuni qaysi kun (yoki yo'q)? | BR-003 |
+| Q-1 | **✅ shop** — Pijama, xalat qaysi bo'limga? Tovar turlari ro'yxati to'g'rimi, nimadir qo'shilsinmi (masalan: kostyum, sharf/ro'mol, paypoq, kolgotka)? | 3.1 |
+| Q-2 | **✅ dam olish kuni yo'q** — Dam olish kuni qaysi kun (yoki yo'q)? | BR-003 |
 | Q-3 | Xarita lokatsiyasi va do'kon rasmi/logotipi bormi? | BR-003 |
-| Q-4 | Qarz muddati aytilmasa — sukut necha kun? Muddatsiz qarz bo'ladimi? | BR-052 |
-| Q-5 | Ortiqcha to'lov: rad etilsinmi yoki avans sifatida saqlansinmi? | BR-065 |
-| Q-6 | Ikkala bo'limda qarz bo'lsa, bo'lim aytilmagan to'lov qanday taqsimlanadi? | BR-066 |
+| Q-4 | **✅ BR-052** — Qarz muddati aytilmasa — sukut necha kun? Muddatsiz qarz bo'ladimi? | BR-052 |
+| Q-5 | **✅ rad etiladi** — Ortiqcha to'lov: rad etilsinmi yoki avans sifatida saqlansinmi? | BR-065 |
+| Q-6 | **✅ bot so'raydi** — Ikkala bo'limda qarz bo'lsa, bo'lim aytilmagan to'lov qanday taqsimlanadi? | BR-066 |
 | Q-7 | Adminga ham bo'lim xabarlari (🔔) kelsinmi? | BR-028 |
 | Q-8 | Qarzi bor mijozni qarz yopilmasdan o'chirish mumkinmi? | BR-046 |
-| Q-9 | Qarzni kechib yuborish — har qanday xodimmi yoki faqat admin? | BR-057 |
+| Q-9 | **✅ har qanday xodim** — Qarzni kechib yuborish — har qanday xodimmi yoki faqat admin? | BR-057 |
 | Q-10 | Aralash savdo hisobotda qanday ko'rinadi (savdo 500 000 / naqd 200 000 / qarz 300 000)? | BR-071 |
 | Q-11 | Qisman to'langan qarzli tovar qaytsa, ortiqcha pul mijozga qaytariladimi? | BR-084 |
 | Q-12 | Qaytarishga muddat cheklovi bormi? | BR-087 |
@@ -241,13 +242,13 @@
 | Q-23 | 20:00 hisoboti dam olish kunida; haftalik/oylik vazifalar vaqti | BR-188 |
 | Q-24 | Google Drive backup kerakmi? | DATA_SAFETY |
 | Q-25 | Production server qachon va qaysi? | DEPLOY |
-| Q-26 | Sof nasiya ("ko'ylak oldi, nasiyaga") omborni kamaytiradimi? Savdo hisobotida ko'rinadimi (masalan "nasiyaga sotilgan" qatori)? | BR-050, BR-074 |
-| Q-27 | FIFO'da "eng eski" — yozilgan sanami yoki muddatmi? Import qarzlarida asl sana hisobga olinadimi? | BR-061 |
+| Q-26 | **✅ ombordan ayiriladi** — Savdo hisobotida ko'rinadimi (masalan "nasiyaga sotilgan" qatori)? | BR-050, BR-074 |
+| Q-27 | **✅ qarz sanasi bo'yicha** — FIFO'da "eng eski" — yozilgan sanami yoki muddatmi? Import qarzlarida asl sana hisobga olinadimi? | BR-061 |
 | Q-28 | Kechib yuborish: butun qoldiqmi yoki qisman summa? Bitta qarzmi yoki bo'limdagi hamma qarz? | BR-057 |
 | Q-29 | Bir nechta tovarli yozuvdan bitta tovar qaytsa (qisman qaytarish) — qolganlari o'z holicha qoladimi? | BR-084 |
 | Q-30 | Bo'limlararo almashtirishda eski qarzga avval tushgan to'lovlar yangi bo'lim qarziga o'tadimi? | BR-085 |
 | Q-31 | Qarzga ham chegirma bo'ladimi ("500 lik ko'ylakni 450 ga nasiyaga berdim")? | BR-073 |
 | Q-32 | Eslatmalar har bir qarz uchunmi yoki mijoz uchun? Muddat uzaytirilsa 5 martalik hisoblagich qaytadan boshlanadimi? | BR-163 |
-| Q-33 | O'chirilgan mijozning qarzi "jami qarz" hisobotida qoladimi? (Taklif: ha — pul yo'qolmasligi uchun) | BR-046, BR-055 |
+| Q-33 | **✅ ha, qoladi** — O'chirilgan mijozning qarzi "jami qarz" hisobotida qoladimi?  | BR-046, BR-055 |
 | Q-34 | To'lov bekor qilinsa yoki tahrirlansa, taqsimot qanday qayta hisoblanadi? (Taklif: eski to'lov `cancelled`, yangi to'lov qaytadan taqsimlanadi) | BR-104 |
 | Q-35 | 08:00 ro'yxatida — barcha telefonsiz mijozlarmi yoki faqat telefonsiz qarzdorlarmi? | BR-042 |
