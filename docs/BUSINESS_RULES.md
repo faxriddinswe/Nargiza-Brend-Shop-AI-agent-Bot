@@ -287,3 +287,10 @@
 - **Q-20 ✅** Customer reminders at 10:00 every day (no day off). **Q-21 ✅** Both sections → one message, sections on separate lines.
 - **Q-22 ✅** Announcements to debtors / overdue debtors are NOT promotional (sent even if promotions are off). **Q-23 ✅** 20:00 report every day; weekly task Monday 09:00 (admin debtors Excel — planned with Stage 9), monthly on the 1st at 09:00.
 - Q-35 applied as: the 08:00 list shows only debtors without a phone.
+
+## Stage 8 owner decisions (2026-11-11) — notebook import by typing
+- Import is typed, not voice/photo (voice is off for now). Line shape: `Umida opa, 90 123 45 67, 350 ming, 12-oktabr`.
+- **Q-19 ✅** every imported debt goes to the **shop** section. Imported debts are debt only: no stock change, not in the
+  "new debt" / turnover reports (technical inactive category `eski daftar`, `debts.source='import'`).
+- Unclear lines (❓) are never guessed and are not saved; missing phone/date are ⚠️ (saved with a warning).
+- Status: parser + migration 0010 done; service, handler (/daftar), report/cancel/return guards for `source='import'` are NEXT.
