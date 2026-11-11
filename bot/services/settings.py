@@ -15,7 +15,7 @@ DEFAULTS: dict[str, Any] = {
     "shop.name": "Nargiza Brend",
     "shop.address": "Sherbaraka bozori, 82-do'kon",
     "shop.hours": "07:00 – 18:00",
-    "shop.phone": "+998 95 511 17 00",
+    "shop.phone": "+998 94 511 17 00",
     "shop.instagram": "@nargiza_17_00_",
     "shop.instagram_url": "https://www.instagram.com/nargiza_17_00_/",
     "shop.photo_file_id": None,

@@ -13,7 +13,7 @@
 
 ## 1. Shop information
 
-- **BR-001** Name: Nargiza Brend. Address: Sherbaraka bazaar, shop no. 82. Opening hours: 07:00–18:00. Phone: +998 95 511 17 00. Instagram: @nargiza_17_00_.
+- **BR-001** Name: Nargiza Brend. Address: Sherbaraka bazaar, shop no. 82. Opening hours: 07:00–18:00. Phone: +998 94 511 17 00. Instagram: @nargiza_17_00_.
 - **BR-002** Time zone — `Asia/Tashkent`. "Today", "this month" and all other periods are based on Tashkent time (a day starts at 00:00). Times are stored in the DB as `timestamptz`.
 - **BR-003** ✅ There is no day off — the shop is open every day (this remains changeable in settings). Map location and shop photo/logo — entered by the admin in settings. ❓ Q-3
 - **BR-004** All money is in whole so'm. No tiyin, no fractions.

@@ -51,7 +51,7 @@ Do'kon ma'lumotlari:
 - Nomi: Nargiza Brend
 - Manzil: Sherbaraka bozori, 82-do'kon
 - Ish vaqti: 07:00 – 18:00
-- Telefon: +998 95 511 17 00
+- Telefon: +998 94 511 17 00
 - Instagram: @nargiza_17_00_ — https://www.instagram.com/nargiza_17_00_/
 - Vaqt zonasi: Asia/Tashkent
 - Hali ma'lum emas (sozlamadan kiritiladi): dam olish kuni, xarita lokatsiyasi, do'kon rasmi/logotipi.
@@ -234,7 +234,7 @@ Assalomu alaykum! Nargiza Brend do'koniga xush kelibsiz 🌸
 👗 Ayollar kiyimlari, oyoq kiyimlari va ichki kiyimlar
 📍 Sherbaraka bozori, 82-do'kon
 🕖 Ish vaqti: 07:00 – 18:00
-📞 +998 95 511 17 00
+📞 +998 94 511 17 00
 📸 Instagram: @nargiza_17_00_
 
 Yangi kolleksiyalar, chegirmalar va do'kon yangiliklaridan birinchi bo'lib xabardor bo'lish uchun ro'yxatdan o'ting 👇
