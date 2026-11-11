@@ -1,0 +1,495 @@
+"""Debt ledger: debts, payments, write-offs, cancellations, balances (BR-050…BR-067, BR-104).
+
+Concurrency (architect review): every money write locks the customer row first, then that
+customer's open debts (`FOR UPDATE`, same order everywhere → no deadlocks). The database
+re-checks at COMMIT (deferred triggers), so even a bug here cannot overpay a debt.
+
+Balances are never stored: remaining = total − Σ allocations of active payments.
+"""
+
+from __future__ import annotations
+
+from collections import defaultdict
+from collections.abc import Sequence
+from dataclasses import dataclass, field
+from datetime import UTC, date, datetime
+from typing import Any
+
+from sqlalchemy import and_, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from bot.db.models import (
+    Category,
+    Customer,
+    Debt,
+    DebtItem,
+    LedgerStatus,
+    Payment,
+    PaymentAllocation,
+    PaymentKind,
+    Section,
+    User,
+)
+from bot.services.allocation import Allocation, OpenDebt, allocate
+from bot.services.customers import CustomerNotFoundError, require_staff
+
+
+class LedgerError(Exception):
+    pass
+
+
+class EmptyDebtError(LedgerError):
+    pass
+
+
+class InactiveCategoryError(LedgerError):
+    pass
+
+
+class PlanChangedError(LedgerError):
+    """Balances changed between the confirmation card and the tap (another payment came in)."""
+
+
+class AlreadyCancelledError(LedgerError):
+    pass
+
+
+class DebtHasPaymentsError(LedgerError):
+    """BR-104 💡: cancel the payments first."""
+
+
+# ---------------------------------------------------------------- reference data
+@dataclass(frozen=True, slots=True)
+class CategoryRef:
+    id: int
+    name: str
+    section_id: int
+    section_code: str
+
+
+async def categories(session: AsyncSession, *, active_only: bool = True) -> list[CategoryRef]:
+    q = (
+        select(Category.id, Category.name, Category.section_id, Section.code)
+        .join(Section, Section.id == Category.section_id)
+        .order_by(Section.id, Category.id)
+    )
+    if active_only:
+        q = q.where(Category.is_active.is_(True))
+    return [CategoryRef(*row) for row in (await session.execute(q)).all()]
+
+
+async def section_ids(session: AsyncSession) -> dict[str, int]:
+    return {
+        code: sid for sid, code in (await session.execute(select(Section.id, Section.code))).all()
+    }
+
+
+async def section_codes(session: AsyncSession) -> dict[int, str]:
+    return {sid: code for code, sid in (await section_ids(session)).items()}
+
+
+# ---------------------------------------------------------------- locking & reading
+async def lock_customer(session: AsyncSession, customer_id: int) -> Customer:
+    c = await session.scalar(select(Customer).where(Customer.id == customer_id).with_for_update())
+    if c is None:
+        raise CustomerNotFoundError(customer_id)
+    return c
+
+
+def _paid_subquery() -> Any:
+    return (
+        select(PaymentAllocation.debt_id, func.sum(PaymentAllocation.amount).label("paid"))
+        .join(Payment, Payment.id == PaymentAllocation.payment_id)
+        .where(Payment.status == LedgerStatus.ACTIVE)
+        .group_by(PaymentAllocation.debt_id)
+        .subquery()
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class DebtView:
+    id: int
+    section_id: int
+    debt_date: date
+    due_date: date | None
+    total: int
+    paid: int
+    note: str | None
+
+    @property
+    def remaining(self) -> int:
+        return self.total - self.paid
+
+
+async def debts_with_remaining(
+    session: AsyncSession,
+    customer_id: int,
+    *,
+    section_id: int | None = None,
+    only_open: bool = True,
+    lock: bool = False,
+) -> list[DebtView]:
+    paid = _paid_subquery()
+    q = (
+        select(
+            Debt.id,
+            Debt.section_id,
+            Debt.debt_date,
+            Debt.due_date,
+            Debt.total_amount,
+            func.coalesce(paid.c.paid, 0),
+            Debt.note,
+        )
+        .outerjoin(paid, paid.c.debt_id == Debt.id)
+        .where(Debt.customer_id == customer_id, Debt.status == LedgerStatus.ACTIVE)
+        .order_by(Debt.debt_date, Debt.id)
+    )
+    if section_id is not None:
+        q = q.where(Debt.section_id == section_id)
+    if lock:
+        # lock the debt rows (not the aggregate) — order matches FIFO → deterministic lock order
+        ids_q = select(Debt.id).where(
+            Debt.customer_id == customer_id, Debt.status == LedgerStatus.ACTIVE
+        )
+        if section_id is not None:
+            ids_q = ids_q.where(Debt.section_id == section_id)
+        await session.execute(ids_q.order_by(Debt.debt_date, Debt.id).with_for_update())
+    views = [DebtView(*row) for row in (await session.execute(q)).all()]
+    return [v for v in views if v.remaining > 0] if only_open else views
+
+
+async def balances(session: AsyncSession, customer_id: int) -> dict[int, int]:
+    """section_id → remaining (only sections with debt > 0). BR-055/056."""
+    result: dict[int, int] = defaultdict(int)
+    for d in await debts_with_remaining(session, customer_id):
+        result[d.section_id] += d.remaining
+    return dict(result)
+
+
+# ---------------------------------------------------------------- debts
+@dataclass(frozen=True, slots=True)
+class ItemInput:
+    category_id: int
+    quantity: int
+    unit_price: int
+    note: str | None = None
+
+    @property
+    def total(self) -> int:
+        return self.quantity * self.unit_price
+
+
+@dataclass(slots=True)
+class CreatedDebt:
+    debt_id: int
+    section_id: int
+    total: int
+    items: list[ItemInput] = field(default_factory=list)
+
+
+def split_by_section(
+    items: Sequence[ItemInput], cat_section: dict[int, int]
+) -> dict[int, list[ItemInput]]:
+    """BR-021/022: section comes from the category; one debt per section."""
+    groups: dict[int, list[ItemInput]] = defaultdict(list)
+    for it in items:
+        if it.category_id not in cat_section:
+            raise InactiveCategoryError(it.category_id)
+        if it.quantity <= 0 or it.unit_price <= 0:
+            raise LedgerError("quantity and price must be positive")
+        groups[cat_section[it.category_id]].append(it)
+    return dict(groups)
+
+
+async def create_debts(
+    session: AsyncSession,
+    actor: User,
+    *,
+    customer_id: int,
+    items: Sequence[ItemInput],
+    due_date: date | None,
+    today: date,
+    note: str | None = None,
+) -> list[CreatedDebt]:
+    require_staff(actor)
+    if not items:
+        raise EmptyDebtError
+    customer = await lock_customer(session, customer_id)
+    if customer.deleted_at is not None:
+        raise CustomerNotFoundError(customer_id)
+    cat_section = {c.id: c.section_id for c in await categories(session)}
+    created: list[CreatedDebt] = []
+    for section_id, group in sorted(split_by_section(items, cat_section).items()):
+        total = sum(it.total for it in group)
+        debt = Debt(
+            customer_id=customer_id,
+            section_id=section_id,
+            debt_date=today,
+            due_date=due_date,
+            total_amount=total,
+            note=note,
+            created_by=actor.id,
+        )
+        session.add(debt)
+        await session.flush()
+        session.add_all(
+            DebtItem(
+                debt_id=debt.id,
+                section_id=section_id,
+                category_id=it.category_id,
+                quantity=it.quantity,
+                unit_price=it.unit_price,
+                note=it.note,
+            )
+            for it in group
+        )
+        created.append(CreatedDebt(debt.id, section_id, total, list(group)))
+    await session.flush()
+    return created
+
+
+async def set_due_date(session: AsyncSession, actor: User, debt_id: int, due: date | None) -> None:
+    require_staff(actor)
+    debt = await session.get(Debt, debt_id)
+    if debt is None or debt.status != LedgerStatus.ACTIVE:
+        raise LedgerError("debt not active")
+    debt.due_date = due
+    await session.flush()
+
+
+# ---------------------------------------------------------------- payments / write-offs
+@dataclass(frozen=True, slots=True)
+class PaymentPlan:
+    customer_id: int
+    section_id: int
+    kind: PaymentKind
+    amount: int
+    debt_id: int | None
+    allocations: tuple[Allocation, ...]
+    owed_before: int
+
+    @property
+    def owed_after(self) -> int:
+        return self.owed_before - self.amount
+
+
+async def plan_payment(
+    session: AsyncSession,
+    *,
+    customer_id: int,
+    section_id: int,
+    amount: int,
+    kind: PaymentKind = PaymentKind.PAYMENT,
+    debt_id: int | None = None,
+    lock: bool = False,
+) -> PaymentPlan:
+    """Preview for the confirmation card (BR-063). Raises OverpaymentError / NothingToPayError."""
+    debts = await debts_with_remaining(session, customer_id, section_id=section_id, lock=lock)
+    open_debts = [OpenDebt(d.id, d.debt_date, d.remaining) for d in debts]
+    allocations = allocate(open_debts, amount, debt_id=debt_id)
+    return PaymentPlan(
+        customer_id=customer_id,
+        section_id=section_id,
+        kind=kind,
+        amount=amount,
+        debt_id=debt_id,
+        allocations=tuple(allocations),
+        owed_before=sum(d.remaining for d in open_debts),
+    )
+
+
+async def record_payment(
+    session: AsyncSession,
+    actor: User,
+    *,
+    customer_id: int,
+    section_id: int,
+    amount: int,
+    kind: PaymentKind,
+    today: date,
+    debt_id: int | None = None,
+    expected: Sequence[tuple[int, int]] | None = None,
+    note: str | None = None,
+) -> tuple[Payment, PaymentPlan]:
+    """Writes a payment or write-off with its allocations — locked and re-planned.
+
+    `expected` = allocations shown on the card; if the fresh plan differs, PlanChangedError.
+    """
+    require_staff(actor)
+    await lock_customer(session, customer_id)
+    plan = await plan_payment(
+        session,
+        customer_id=customer_id,
+        section_id=section_id,
+        amount=amount,
+        kind=kind,
+        debt_id=debt_id,
+        lock=True,
+    )
+    if expected is not None and [(a.debt_id, a.amount) for a in plan.allocations] != [
+        tuple(x) for x in expected
+    ]:
+        raise PlanChangedError
+    payment = Payment(
+        customer_id=customer_id,
+        section_id=section_id,
+        kind=kind.value,
+        method="cash" if kind == PaymentKind.PAYMENT else None,
+        amount=amount,
+        paid_on=today,
+        note=note,
+        created_by=actor.id,
+    )
+    session.add(payment)
+    await session.flush()
+    session.add_all(
+        PaymentAllocation(
+            payment_id=payment.id,
+            debt_id=a.debt_id,
+            section_id=section_id,
+            customer_id=customer_id,
+            amount=a.amount,
+        )
+        for a in plan.allocations
+    )
+    await session.flush()
+    return payment, plan
+
+
+# ---------------------------------------------------------------- cancellation (BR-104)
+async def cancel_payment(
+    session: AsyncSession, actor: User, payment_id: int, reason: str | None = None
+) -> Payment:
+    require_staff(actor)
+    p = await session.get(Payment, payment_id)
+    if p is None:
+        raise LedgerError("payment not found")
+    await lock_customer(session, p.customer_id)
+    await session.refresh(p)
+    if p.status != LedgerStatus.ACTIVE:
+        raise AlreadyCancelledError
+    p.status = LedgerStatus.CANCELLED
+    p.cancelled_at = datetime.now(UTC)
+    p.cancelled_by = actor.id
+    p.cancel_reason = reason
+    await session.flush()
+    return p
+
+
+async def cancel_debt(
+    session: AsyncSession, actor: User, debt_id: int, reason: str | None = None
+) -> Debt:
+    require_staff(actor)
+    d = await session.get(Debt, debt_id)
+    if d is None:
+        raise LedgerError("debt not found")
+    await lock_customer(session, d.customer_id)
+    await session.refresh(d)
+    if d.status != LedgerStatus.ACTIVE:
+        raise AlreadyCancelledError
+    has_payments = await session.scalar(
+        select(func.count())
+        .select_from(PaymentAllocation)
+        .join(Payment, Payment.id == PaymentAllocation.payment_id)
+        .where(PaymentAllocation.debt_id == debt_id, Payment.status == LedgerStatus.ACTIVE)
+    )
+    if has_payments:
+        raise DebtHasPaymentsError
+    d.status = LedgerStatus.CANCELLED
+    d.cancelled_at = datetime.now(UTC)
+    d.cancelled_by = actor.id
+    d.cancel_reason = reason
+    await session.flush()
+    return d
+
+
+# ---------------------------------------------------------------- history / views
+@dataclass(frozen=True, slots=True)
+class Entry:
+    kind: str  # "debt" | "payment" | "write_off"
+    id: int
+    customer_id: int
+    customer_name: str
+    section_id: int
+    amount: int
+    created_at: datetime
+    created_by: int | None
+
+
+async def recent_entries(session: AsyncSession, *, limit: int = 10) -> list[Entry]:
+    """Latest active ledger records (for "Oxirgi yozuvni bekor qilish")."""
+    debts_q = (
+        select(Debt.id, Debt.customer_id, Customer.name, Debt.section_id, Debt.total_amount, Debt.created_at, Debt.created_by)
+        .join(Customer, Customer.id == Debt.customer_id)
+        .where(Debt.status == LedgerStatus.ACTIVE)
+        .order_by(Debt.created_at.desc())
+        .limit(limit)
+    )  # fmt: skip
+    pay_q = (
+        select(Payment.id, Payment.customer_id, Customer.name, Payment.section_id, Payment.amount, Payment.created_at, Payment.created_by, Payment.kind)
+        .join(Customer, Customer.id == Payment.customer_id)
+        .where(Payment.status == LedgerStatus.ACTIVE)
+        .order_by(Payment.created_at.desc())
+        .limit(limit)
+    )  # fmt: skip
+    entries = [Entry("debt", *row) for row in (await session.execute(debts_q)).all()]
+    entries += [
+        Entry(kind, pid, cid, name, sid, amt, at, by)
+        for pid, cid, name, sid, amt, at, by, kind in (await session.execute(pay_q)).all()
+    ]
+    entries.sort(key=lambda e: e.created_at, reverse=True)
+    return entries[:limit]
+
+
+@dataclass(slots=True)
+class SectionLedger:
+    section_id: int
+    balance: int
+    open_debts: list[tuple[DebtView, list[tuple[str, int, int, str | None]]]]
+    recent_payments: list[tuple[date, str, int]]
+
+
+async def customer_ledger(
+    session: AsyncSession, customer_id: int, *, payments_limit: int = 5
+) -> list[SectionLedger]:
+    """Per-section view: open debts with items, balance, recent payments (BR-121, BR-155)."""
+    debts = await debts_with_remaining(session, customer_id)
+    items_rows = (
+        await session.execute(
+            select(DebtItem.debt_id, Category.name, DebtItem.quantity, DebtItem.unit_price, DebtItem.note)
+            .join(Category, Category.id == DebtItem.category_id)
+            .where(DebtItem.debt_id.in_([d.id for d in debts] or [0]))
+            .order_by(DebtItem.id)
+        )
+    ).all()  # fmt: skip
+    items: dict[int, list[tuple[str, int, int, str | None]]] = defaultdict(list)
+    for debt_id, name, qty, price, note in items_rows:
+        items[debt_id].append((name, qty, price, note))
+    pays = (
+        await session.execute(
+            select(Payment.section_id, Payment.paid_on, Payment.kind, Payment.amount)
+            .where(Payment.customer_id == customer_id, Payment.status == LedgerStatus.ACTIVE)
+            .order_by(Payment.created_at.desc())
+            .limit(payments_limit * 2)
+        )
+    ).all()
+    sections: dict[int, SectionLedger] = {}
+    for d in debts:
+        sl = sections.setdefault(d.section_id, SectionLedger(d.section_id, 0, [], []))
+        sl.balance += d.remaining
+        sl.open_debts.append((d, items[d.id]))
+    for sid, paid_on, kind, amount in pays:
+        if sid in sections and len(sections[sid].recent_payments) < payments_limit:
+            sections[sid].recent_payments.append((paid_on, kind, amount))
+    return [sections[k] for k in sorted(sections)]
+
+
+async def last_debt_date(session: AsyncSession, customer_ids: Sequence[int]) -> dict[int, date]:
+    if not customer_ids:
+        return {}
+    rows = await session.execute(
+        select(Debt.customer_id, func.max(Debt.debt_date))
+        .where(and_(Debt.customer_id.in_(list(customer_ids)), Debt.status == LedgerStatus.ACTIVE))
+        .group_by(Debt.customer_id)
+    )
+    return {cid: d for cid, d in rows.all()}

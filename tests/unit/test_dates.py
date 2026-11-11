@@ -81,3 +81,43 @@ def test_today_tashkent_crosses_midnight_before_utc() -> None:
 def test_month_and_year_boundaries(today: date, text: str, start: date, end: date) -> None:
     p = parse_period(text, today)
     assert p is not None and (p.start, p.end) == (start, end)
+
+
+# ---------------------------------------------------------------- due dates (BR-052)
+from bot.utils.dates import add_months, due_from_preset, parse_due_date  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    ("preset", "expected"),
+    [("1w", date(2026, 11, 18)), ("2w", date(2026, 11, 25)), ("1m", date(2026, 12, 11))],
+)
+def test_due_presets(preset: str, expected: date) -> None:
+    assert due_from_preset(preset, TODAY) == expected
+
+
+def test_add_months_clamps_to_month_end() -> None:
+    assert add_months(date(2026, 1, 31), 1) == date(2026, 2, 28)
+    assert add_months(date(2028, 1, 31), 1) == date(2028, 2, 29)
+    assert add_months(date(2026, 12, 15), 1) == date(2027, 1, 15)
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("25.12", date(2026, 12, 25)),
+        ("25.12.2026", date(2026, 12, 25)),
+        ("25/12/26", date(2026, 12, 25)),
+        ("25-dekabr", date(2026, 12, 25)),
+        ("25 dekabr", date(2026, 12, 25)),
+        ("5 yanvar", date(2027, 1, 5)),  # o'tgan oy → keyingi yil
+        ("11.11", TODAY),  # bugun ham mumkin
+        ("10 mart", date(2027, 3, 10)),
+    ],
+)
+def test_parse_due_date(text: str, expected: date) -> None:
+    assert parse_due_date(text, TODAY) == expected
+
+
+@pytest.mark.parametrize("text", ["10.11.2026", "31.02", "ertaga", "salom", "1.1.2030", "45.12"])
+def test_parse_due_date_rejects(text: str) -> None:
+    assert parse_due_date(text, TODAY) is None

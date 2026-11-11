@@ -148,3 +148,55 @@ def format_date(d: date) -> str:
     """`2026-11-12` → `12-noyabr` (joriy yil bo'lmasa — `12-noyabr 2025`)."""
     base = f"{d.day}-{MONTH_NAMES_UZ[d.month - 1]}"
     return base if d.year == today_tashkent().year else f"{base} {d.year}"
+
+
+# ---------------------------------------------------------------- due dates (BR-052)
+DUE_PRESETS: dict[str, int] = {"1w": 7, "2w": 14}  # days; "1m" = same day next month
+
+
+def add_months(d: date, months: int) -> date:
+    """Same day N months later; clamps to the month's last day (31-yanvar + 1 oy = 28/29-fevral)."""
+    y, m = divmod(d.month - 1 + months, 12)
+    year, month = d.year + y, m + 1
+    return date(year, month, min(d.day, _month_end(year, month).day))
+
+
+def due_from_preset(preset: str, today: date) -> date:
+    if preset in DUE_PRESETS:
+        return today + timedelta(days=DUE_PRESETS[preset])
+    if preset == "1m":
+        return add_months(today, 1)
+    raise ValueError(preset)
+
+
+_DUE_NUMERIC = re.compile(r"^(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?$")
+
+
+def parse_due_date(text: str, today: date) -> date | None:
+    """ "25.12", "25.12.2026", "25-dekabr", "25 dekabr" → a date that is today or later.
+
+    No year given: this year if not passed, otherwise next year. Past dates → None (bot asks again).
+    """
+    t = search_key(text).replace(" ", "") if _DUE_NUMERIC.match(text.strip()) else search_key(text)
+    if m := _DUE_NUMERIC.match(t):
+        day, month = int(m[1]), int(m[2])
+        year_s = m[3]
+        year = None if year_s is None else (2000 + int(year_s) if len(year_s) == 2 else int(year_s))
+    else:
+        t = re.sub(r"(\d)-([a-z])", r"\1 \2", t)
+        m2 = re.match(r"^(\d{1,2}) ?([a-z]+)(?: (\d{4}))?$", t)
+        if not m2 or m2[2] not in MONTHS:
+            return None
+        day, month, year = int(m2[1]), MONTHS[m2[2]], int(m2[3]) if m2[3] else None
+    try:
+        if year is None:
+            candidate = date(today.year, month, day)
+            if candidate < today:
+                candidate = date(today.year + 1, month, day)
+        else:
+            candidate = date(year, month, day)
+    except ValueError:
+        return None
+    if candidate < today or candidate > today + timedelta(days=366 * 2):
+        return None
+    return candidate

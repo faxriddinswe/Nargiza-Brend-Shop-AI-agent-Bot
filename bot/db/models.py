@@ -6,7 +6,7 @@ shunda ORM'dan tashqari yo'llar (bulk update, psql'da qo'lda tuzatish) ham audit
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from enum import StrEnum
 from typing import Any, ClassVar
 
@@ -17,6 +17,7 @@ from sqlalchemy import (
     Computed,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Identity,
     Index,
     Integer,
@@ -253,3 +254,180 @@ class AuditLog(Base):
     old: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     new: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+# ============================================================ Stage 2: debt ledger
+class LedgerStatus(StrEnum):
+    ACTIVE = "active"
+    CANCELLED = "cancelled"
+
+
+class PaymentKind(StrEnum):
+    PAYMENT = "payment"  # cash came into the till
+    WRITE_OFF = "write_off"  # forgiven — reported separately as a loss (BR-057)
+
+
+class CancelMixin:
+    status: Mapped[str] = mapped_column(Text, server_default=LedgerStatus.ACTIVE.value)
+    cancelled_at: Mapped[datetime | None]
+    cancel_reason: Mapped[str | None] = mapped_column(Text)
+
+
+class Debt(CancelMixin, Base):
+    __tablename__ = "debts"
+    __table_args__ = (
+        CheckConstraint("total_amount > 0", name="amount_positive"),
+        CheckConstraint("kind IN ('regular', 'sale_remainder')", name="kind"),
+        CheckConstraint("(kind = 'sale_remainder') = (sale_id IS NOT NULL)", name="sale_link"),
+        CheckConstraint("source IN ('manual', 'import')", name="source"),
+        CheckConstraint("status IN ('active', 'cancelled')", name="status"),
+        CheckConstraint(
+            "(status = 'cancelled') = (cancelled_at IS NOT NULL)", name="cancel_fields"
+        ),
+        CheckConstraint("due_date IS NULL OR due_date >= debt_date", name="due_after_date"),
+        UniqueConstraint("sale_id", name="uq_debts_sale_id"),
+        UniqueConstraint("id", "section_id", name="uq_debts_id_section"),
+        UniqueConstraint("id", "section_id", "customer_id", name="uq_debts_id_section_customer"),
+        Index(
+            "uq_debts_import_ref",
+            "source",
+            "import_ref",
+            unique=True,
+            postgresql_where=text("import_ref IS NOT NULL"),
+        ),
+        Index(
+            "ix_debts_open_fifo",
+            "customer_id",
+            "section_id",
+            "debt_date",
+            "id",
+            postgresql_where=text("status = 'active'"),
+        ),
+        Index(
+            "ix_debts_due",
+            "due_date",
+            postgresql_where=text("status = 'active' AND due_date IS NOT NULL"),
+        ),
+        Index(
+            "ix_debts_no_due",
+            "customer_id",
+            postgresql_where=text("status = 'active' AND due_date IS NULL"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    customer_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("customers.id"))
+    section_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("sections.id"))
+    kind: Mapped[str] = mapped_column(Text, server_default="regular")
+    sale_id: Mapped[int | None] = mapped_column(BigInteger)
+    debt_date: Mapped[date]
+    due_date: Mapped[date | None]
+    total_amount: Mapped[int] = mapped_column(BigInteger)
+    source: Mapped[str] = mapped_column(Text, server_default="manual")
+    import_ref: Mapped[str | None] = mapped_column(Text)
+    note: Mapped[str | None] = mapped_column(Text)
+    cancelled_by: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.id"))
+    created_by: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class DebtItem(Base):
+    __tablename__ = "debt_items"
+    __table_args__ = (
+        CheckConstraint("quantity > 0", name="quantity_positive"),
+        CheckConstraint("unit_price > 0", name="price_positive"),
+        ForeignKeyConstraint(
+            ["debt_id", "section_id"],
+            ["debts.id", "debts.section_id"],
+            name="fk_debt_items_debt_section",
+        ),
+        ForeignKeyConstraint(
+            ["category_id", "section_id"],
+            ["categories.id", "categories.section_id"],
+            name="fk_debt_items_category_section",
+        ),
+        Index("ix_debt_items_debt", "debt_id"),
+        Index("ix_debt_items_category", "category_id", "section_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    debt_id: Mapped[int] = mapped_column(BigInteger)
+    section_id: Mapped[int] = mapped_column(BigInteger)
+    category_id: Mapped[int] = mapped_column(BigInteger)
+    quantity: Mapped[int] = mapped_column(Integer)
+    unit_price: Mapped[int] = mapped_column(BigInteger)
+    note: Mapped[str | None] = mapped_column(Text)
+
+
+class Payment(CancelMixin, Base):
+    __tablename__ = "payments"
+    __table_args__ = (
+        CheckConstraint("amount > 0", name="amount_positive"),
+        CheckConstraint("kind IN ('payment', 'write_off')", name="kind"),
+        CheckConstraint("(kind = 'payment') = (method IS NOT NULL)", name="method_only_for_cash"),
+        CheckConstraint("method IS NULL OR method IN ('cash', 'card')", name="method"),
+        CheckConstraint("source IN ('manual', 'import')", name="source"),
+        CheckConstraint("status IN ('active', 'cancelled')", name="status"),
+        CheckConstraint(
+            "(status = 'cancelled') = (cancelled_at IS NOT NULL)", name="cancel_fields"
+        ),
+        UniqueConstraint("id", "section_id", "customer_id", name="uq_payments_id_section_customer"),
+        Index(
+            "uq_payments_import_ref",
+            "source",
+            "import_ref",
+            unique=True,
+            postgresql_where=text("import_ref IS NOT NULL"),
+        ),
+        Index(
+            "ix_payments_customer_open",
+            "customer_id",
+            "section_id",
+            postgresql_where=text("status = 'active'"),
+        ),
+        Index("ix_payments_section_day", "section_id", "paid_on"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    customer_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("customers.id"))
+    section_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("sections.id"))
+    kind: Mapped[str] = mapped_column(Text)
+    method: Mapped[str | None] = mapped_column(Text)
+    amount: Mapped[int] = mapped_column(BigInteger)
+    paid_on: Mapped[date]
+    source: Mapped[str] = mapped_column(Text, server_default="manual")
+    import_ref: Mapped[str | None] = mapped_column(Text)
+    note: Mapped[str | None] = mapped_column(Text)
+    cancelled_by: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.id"))
+    created_by: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class PaymentAllocation(Base):
+    __tablename__ = "payment_allocations"
+    __table_args__ = (
+        CheckConstraint("amount > 0", name="amount_positive"),
+        UniqueConstraint("payment_id", "debt_id", name="uq_payment_allocations_payment_debt"),
+        ForeignKeyConstraint(
+            ["payment_id", "section_id", "customer_id"],
+            ["payments.id", "payments.section_id", "payments.customer_id"],
+            name="fk_payment_allocations_payment",
+        ),
+        ForeignKeyConstraint(
+            ["debt_id", "section_id", "customer_id"],
+            ["debts.id", "debts.section_id", "debts.customer_id"],
+            name="fk_payment_allocations_debt",
+        ),
+        Index(
+            "ix_payment_allocations_debt", "debt_id", postgresql_include=["payment_id", "amount"]
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    payment_id: Mapped[int] = mapped_column(BigInteger)
+    debt_id: Mapped[int] = mapped_column(BigInteger)
+    section_id: Mapped[int] = mapped_column(BigInteger)
+    customer_id: Mapped[int] = mapped_column(BigInteger)
+    amount: Mapped[int] = mapped_column(BigInteger)

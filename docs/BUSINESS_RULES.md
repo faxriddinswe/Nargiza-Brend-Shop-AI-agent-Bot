@@ -79,11 +79,14 @@
 - **BR-050** Debt: customer (required), section, products (category + note + quantity + price), amount, date, due date, who recorded it.
 - **BR-051** The words "qarz", "nasiya" (*"debt", "on credit"*) → a debt record.
 - **BR-052** ✅ If no due date is given, the bot asks while recording: "Muddati qachon?" (*"When is it due?"*); the answer "muddatsiz" (*"no due date"*) is also accepted. Debts without a due date appear every day in the 08:00 list under "📅 Muddati belgilanmagan qarzlar" (*"📅 Debts with no due date"*) with a [📅 Muddat belgilash] (*[📅 Set due date]*) button. Due-date reminders (BR-161…163) are not sent for debts without a due date.
+  ✅ Due-date buttons: [1 hafta] [2 hafta] [1 oy] [📅 Sana] [Muddatsiz] (*1 week / 2 weeks / 1 month / pick a date / no due date*).
 - **BR-053** 💡 A regular debt's amount = sum of products (quantity × price). Exception: the linked debt in a mixed sale (BR-071) — its amount is the unpaid remainder, and the products live on the sale record. Amount > 0.
 - **BR-054** When a debt is recorded, the customer is automatically messaged (if registered in the bot): what they took, amount, due date, total debt.
+- **BR-055a** ✅ When a payment is recorded, the registered customer gets a message too: amount received and remaining balance per section. 💡 If a debt or payment the customer was told about is cancelled, the customer gets a short correction message.
 - **BR-055** The balance is not stored. It is always computed: `debts − payments − write-offs ± adjustments` (excluding deleted and cancelled records).
 - **BR-056** The balance is computed separately for each section.
 - **BR-057** When someone says "Qarzini o'chir/yop" (*"Delete/close their debt"*), the bot asks: [💵 To'ladi] (*[💵 Paid]*) [🤝 Kechib yuborildi] (*[🤝 Forgiven]*) [❌ Bekor] (*[❌ Cancel]*).
+- **BR-058** ✅ Write-off may be partial (any amount up to the balance) or full (\"Hammasini kechish\" — *\"forgive all\"*). It is allocated like a payment: FIFO or a chosen debt (BR-061/062). Write-offs never count as cash.
   - "To'ladi" (*Paid*) = a payment (money came into the till).
   - "Kechib yuborildi" (*Forgiven*) = a write-off (shown separately in reports as a loss).
   - These two types are never mixed. ✅ Decision: any staff member and the admin can forgive a debt (with confirmation; the audit log records who did it).
@@ -92,7 +95,7 @@
 
 - **BR-060** "Umida 100 ming berdi" (*"Umida paid 100k"*) → a payment.
 - **BR-061** By default, allocation is FIFO — the oldest debt is closed first. 💡 Debts with the same timestamp — in ID order (stable). ✅ Decision: "oldest" = by debt date (for imported debts — the original date from the notebook).
-- **BR-062** If the staff member names a specific debt ("oyoq kiyim qarzidan ayir" — *"take it off the footwear debt"*) — it is applied to that debt.
+- **BR-062** If the staff member names a specific debt ("oyoq kiyim qarzidan ayir" — *"take it off the footwear debt"*) — it is applied to that debt. 💡 If the amount exceeds that debt's remaining balance, it is rejected (not spilled over to other debts) — the bot shows the remaining amount.
 - **BR-063** The confirmation card shows how much is being closed from which debt(s).
 - **BR-064** Partial payments are allowed.
 - **BR-065** ✅ If a payment exceeds the balance — it is rejected. The bot shows the balance and asks for the amount to be corrected: "Umida opaning qarzi 250 000 so'm. 300 000 dan ko'p — summani tekshirib bering." (*"Umida opa's debt is 250 000 so'm. 300 000 is more than that — please check the amount."*)
@@ -139,7 +142,7 @@
 - **BR-101** Queries (reads) run immediately, without confirmation.
 - **BR-102** Idempotency: even if a button is pressed twice, the record is written only once.
 - **BR-103** ✅ A confirmation card is valid for 30 minutes (configurable in settings). After that: "Bu karta eskirdi, qaytadan ayting" (*"This card has expired, please say it again"*). Only the staff member who received the card can confirm it.
-- **BR-104** "Oxirgi yozuvni bekor qil" (*"Cancel the last record"*) — with confirmation; the record is not deleted, it moves to the `cancelled` status and stays in the history. ❓ Q-16: can a staff member cancel only records they wrote themselves? Is there a time limit?
+- **BR-104** "Oxirgi yozuvni bekor qil" (*"Cancel the last record"*) — with confirmation; the record is not deleted, it moves to the `cancelled` status and stays in the history. ✅ Decision: **any staff member or admin may cancel any record, at any time** (with confirmation; the audit log keeps who cancelled what). A debt that already has active payments cannot be cancelled until those payments are cancelled first (💡 — protects the balance).
 - **BR-105** Each business action is a single transaction: either everything is written or nothing is.
 - **BR-106** Every write, edit and deletion goes into the audit log (who, when, old value, new value).
 
@@ -242,7 +245,7 @@
 | Q-13 | "Low stock" threshold for each category | BR-094 |
 | Q-14 | Opening stock (per category) | BR-095 |
 | Q-15 | **✅ 30 minutes** — After how many minutes does a confirmation card expire? | BR-103 |
-| Q-16 | "Cancel the last record" — own records only? Is there a time limit? | BR-104 |
+| Q-16 | **✅ anyone, any record, any time** — "Cancel the last record" — own records only? Is there a time limit? | BR-104 |
 | Q-17 | Does "this week" start on Monday? | BR-123 |
 | Q-18 | "Mart" (March) — take it as the past March of the current year? | BR-123 |
 | Q-19 | How is the section determined when importing the old notebook? | BR-144 |
@@ -254,11 +257,11 @@
 | Q-25 | When, and which, production server? | DEPLOY |
 | Q-26 | **✅ deducted from stock** — Does it appear in the sales report (e.g. a "sold on credit" row)? | BR-050, BR-074 |
 | Q-27 | **✅ by debt date** — In FIFO, is "oldest" the recorded date or the due date? Is the original date used for imported debts? | BR-061 |
-| Q-28 | Forgiveness: the whole balance or a partial amount? One debt or all debts in the section? | BR-057 |
+| Q-28 | **✅ partial allowed (up to the balance), FIFO or a chosen debt** — Forgiveness: the whole balance or a partial amount? One debt or all debts in the section? | BR-057 |
 | Q-29 | If one product is returned from a multi-product record (partial return) — do the rest stay as they are? | BR-084 |
 | Q-30 | In a cross-section exchange, do payments already made against the old debt carry over to the new section's debt? | BR-085 |
 | Q-31 | Can a debt also have a discount ("500 lik ko'ylakni 450 ga nasiyaga berdim" — *"I gave the 500 dress on credit for 450"*)? | BR-073 |
 | Q-32 | Are reminders per debt or per customer? If the due date is extended, does the 5-reminder counter restart? | BR-163 |
 | Q-33 | **✅ yes, it stays** — Does a deleted customer's debt remain in the "total debt" report? | BR-046, BR-055 |
-| Q-34 | If a payment is cancelled or edited, how is the allocation recalculated? (Proposal: the old payment becomes `cancelled`, the new payment is allocated afresh) | BR-104 |
+| Q-34 | **✅ proposal accepted** — If a payment is cancelled or edited, how is the allocation recalculated? (Proposal: the old payment becomes `cancelled`, the new payment is allocated afresh) | BR-104 |
 | Q-35 | In the 08:00 list — all customers without a phone, or only debtors without a phone? | BR-042 |

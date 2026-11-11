@@ -133,3 +133,59 @@ to finish and receives the ready result. All of this happens in **a single trans
 - 5: `sales`, `sale_items`, `returns`, `stock_movements`.
 - 7: `broadcasts`, `broadcast_recipients`, `reminders_log`.
 - 3: `ai_calls`.
+
+## Stage 2 tables — debt ledger (design, pending architect review)
+
+```mermaid
+erDiagram
+    customers ||--o{ debts : has
+    debts ||--o{ debt_items : contains
+    customers ||--o{ payments : makes
+    payments ||--o{ payment_allocations : "split into"
+    debts ||--o{ payment_allocations : "paid by"
+    categories ||--o{ debt_items : "(category_id, section_id)"
+```
+
+### debts
+| Column | Type | Notes |
+|---|---|---|
+| id | bigint PK | |
+| customer_id | FK customers NOT NULL | |
+| section_id | FK sections NOT NULL | UNIQUE (id, section_id) — target of composite FKs |
+| debt_date | date NOT NULL | business date (Tashkent); FIFO order key (BR-061); import keeps the notebook date |
+| due_date | date NULL | NULL = no due date (BR-052); CHECK due_date >= debt_date |
+| total_amount | bigint NOT NULL CHECK > 0 | must equal Σ(quantity × unit_price) when items exist (deferred constraint trigger) |
+| source | text CHECK in (manual, import) | |
+| note | text NULL | |
+| status | text CHECK in (active, cancelled) | "closed" is never stored — derived from the balance |
+| cancelled_at, cancelled_by | | set together with status = cancelled (CHECK) |
+| created_by, created_at, updated_at | | |
+
+### debt_items
+`id`, `debt_id`, `section_id`, `category_id`, `quantity int CHECK > 0`, `unit_price bigint CHECK > 0`, `note`.
+Composite FKs: `(debt_id, section_id) → debts(id, section_id)` and `(category_id, section_id) → categories(id, section_id)`
+— a footwear item can never end up in a lingerie debt (BR-021), enforced by the database.
+
+### payments
+| Column | Type | Notes |
+|---|---|---|
+| id | bigint PK | UNIQUE (id, section_id) |
+| customer_id, section_id | FK NOT NULL | a payment belongs to exactly one section (BR-066) |
+| kind | text CHECK in (payment, write_off) | cash vs forgiven — never mixed (BR-057) |
+| amount | bigint CHECK > 0 | |
+| note | text NULL | |
+| status | text CHECK in (active, cancelled) | + cancelled_at / cancelled_by |
+| created_by, created_at, updated_at | | |
+
+### payment_allocations
+`id`, `payment_id`, `debt_id`, `section_id`, `amount bigint CHECK > 0`, UNIQUE (payment_id, debt_id).
+Composite FKs to `payments(id, section_id)` and `debts(id, section_id)` — allocations never cross sections.
+Deferred constraint triggers (checked at COMMIT):
+- Σ allocations of a payment = payment.amount;
+- Σ allocations of **active** payments on a debt ≤ debt.total_amount (no overpayment, BR-065);
+- the debt and payment belong to the same customer.
+
+### Derived values (never stored)
+- debt remaining = total_amount − Σ allocations of active payments (cancelled debts excluded entirely)
+- customer balance per section = Σ remaining of active debts
+- cancelling a payment frees its allocations; cancelling a debt with active allocations is refused.
