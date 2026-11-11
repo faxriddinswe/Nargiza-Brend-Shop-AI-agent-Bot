@@ -60,7 +60,7 @@ Mijoz kartasida **🗑 O'chirish**. Qarzi bo'lsa, bot ogohlantiradi. Mijoz bazad
 
 ## 🎤 Oddiy gap va ovozli xabar bilan ishlash
 
-Tugma bosmasdan, shunchaki yozing yoki **mikrofon tugmasini bosib gapiring**. Misollar:
+Tugma bosmasdan, shunchaki **yozing**. (Ovozli xabar hozircha o'chirilgan — keyinroq yoqiladi.) Misollar:
 
 | Aytasiz | Bot nima qiladi |
 |---|---|

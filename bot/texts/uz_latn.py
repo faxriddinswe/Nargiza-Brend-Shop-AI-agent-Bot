@@ -1176,3 +1176,6 @@ def bc_result(delivered: int, blocked: int, failed: int) -> str:
     extra = f", {blocked} tasi botni bloklagan" if blocked else ""
     miss = f", {failed} tasiga yetmadi" if failed else ""
     return f"✅ {delivered} tasiga yetdi{extra}{miss}."
+
+
+AI_VOICE_OFF: Final = "🎤 Ovozli xabar hozircha o'chirilgan. Iltimos, yozib yuboring — men yozuvni ham xuddi shunday tushunaman."

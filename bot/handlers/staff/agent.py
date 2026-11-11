@@ -79,6 +79,9 @@ async def on_voice(
     settings: Settings,
     bot: Bot,
 ) -> None:
+    if not settings.voice_enabled:
+        await message.answer(t.AI_VOICE_OFF)
+        return
     voice = message.voice
     if voice is None or ai is None:
         await message.answer(t.AI_NOT_CONFIGURED)

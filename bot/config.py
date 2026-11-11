@@ -64,6 +64,8 @@ class Settings(BaseSettings):
     ai_output_usd_per_m: float = 2.50
     # Voice messages longer than this are refused (cost and accuracy)
     voice_max_seconds: int = 90
+    # Voice is switched off for now: staff work with text (set VOICE_ENABLED=true to turn it on)
+    voice_enabled: bool = False
     # Per staff member: protects the budget if an account is abused or a loop goes wrong
     ai_per_minute: int = 10
     ai_per_day: int = 300
