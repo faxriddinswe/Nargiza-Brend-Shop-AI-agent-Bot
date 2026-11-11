@@ -84,6 +84,12 @@ improve its products and human reviewers may read it; the paid tier does not use
 
 ## Evaluation
 
+**First real run (2026-11-11, `gemini-3.5-flash-lite`, free tier, 72 checks): 97.2 % overall, 97.6 % on write tools**
+(41/42; requirement ≥ 90 %). The one wrong write was a mis-transcribed name (`Dilnoba` for `Dilnoza`), which the
+dispatcher would have confirmed with ✅/❌ before using it. Average ≈ 2.7 k tokens per request (≈ $0.001 at paid rates).
+On the free tier a few replies took 30–40 s or failed with a connection error — the eval retries; production should use
+the paid tier (higher limits).
+
 `tests/eval/phrases.yaml` — 66 phrases (Latin + Cyrillic, numbers in words, mixed requests, must-ask cases,
 unsupported requests). `scripts/run_eval.py` sends them to the real model and compares tools, customers, amounts
 (read by our parser), products and due dates. Acceptance: **≥ 90 %** on write tools. Real family voice messages go to

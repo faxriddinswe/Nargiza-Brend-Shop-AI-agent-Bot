@@ -121,3 +121,21 @@ def test_parse_due_date(text: str, expected: date) -> None:
 @pytest.mark.parametrize("text", ["10.11.2026", "31.02", "ertaga", "salom", "1.1.2030", "45.12"])
 def test_parse_due_date_rejects(text: str) -> None:
     assert parse_due_date(text, TODAY) is None
+
+
+@pytest.mark.parametrize(
+    ("spoken", "expected"),
+    [
+        ("25-dekabrgacha", (True, date(2026, 12, 25))),
+        ("bir haftaga", (True, date(2026, 11, 18))),
+        ("2 haftagacha", (True, date(2026, 11, 25))),
+        ("bir oyga", (True, date(2026, 12, 11))),
+        ("muddatsiz", (True, None)),
+        ("yo'q", (True, None)),
+        ("ertaga bir kun", (False, None)),
+    ],
+)
+def test_parse_due_text_with_case_endings(spoken: str, expected: tuple[bool, date | None]) -> None:
+    from bot.utils.dates import parse_due_text
+
+    assert parse_due_text(spoken, TODAY) == expected

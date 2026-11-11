@@ -470,3 +470,18 @@ async def test_short_words_do_not_hit_products(sm: SM) -> None:
     async with read_session(sm) as s:
         for word in ("ko", "kof", "shi", "sum", "ship"):
             assert await d.resolve_category(s, word) is None, word
+
+
+async def test_pronoun_as_customer_means_last_customer(sm: SM) -> None:
+    """The model sometimes copies "unga" into customer_query; code maps it to the remembered customer."""
+    w = await _world(sm)
+    await _debt(sm, w, w.umida, [ItemInput(w.cats["ko'ylak"].id, 1, 300_000)])
+    out = await _run(
+        sm,
+        w.staff,
+        _pay(customer_query="unga", amount_text="50 ming"),
+        d.Context(today=TODAY, last_customer_id=w.umida),
+    )
+    assert out.card is not None
+    no_ctx = await _run(sm, w.staff, _pay(customer_query="unga", amount_text="50 ming"))
+    assert no_ctx.card is None and no_ctx.question

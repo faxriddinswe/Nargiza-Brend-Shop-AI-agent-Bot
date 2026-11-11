@@ -218,7 +218,10 @@ def parse_due_text(text: str, today: date) -> tuple[bool, date | None]:
     key = search_key(text)
     if key in _NO_DUE:
         return True, None
-    if key in _DUE_WORDS:
-        return True, due_from_preset(_DUE_WORDS[key], today)
-    parsed = parse_due_date(text, today)
+    # "bir haftaga", "2 haftagacha", "25-dekabrgacha": drop the Uzbek case ending
+    bare = re.sub(r"(gacha|ga|dan|da)$", "", key).strip()
+    for candidate in (key, bare):
+        if candidate in _DUE_WORDS:
+            return True, due_from_preset(_DUE_WORDS[candidate], today)
+    parsed = parse_due_date(text, today) or parse_due_date(bare, today)
     return (parsed is not None), parsed

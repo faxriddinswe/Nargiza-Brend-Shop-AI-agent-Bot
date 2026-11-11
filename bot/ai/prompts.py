@@ -48,7 +48,9 @@ QAT'IY QOIDALAR:
 6. Bir xabarda bir nechta ish bo'lsa, bir nechta tool chaqir.
 7. Ovozli xabarda ham shu qoidalar; heard maydoniga aytilganini yoz.
 8. Bu tizimda faqat shu tool'lar bor; boshqa narsa so'rashsa `say` bilan ayt.
-9. Narx «jami» deb aytilsa va soni 1 dan ko'p bo'lsa («3 ta, jami 600 ming») — bittasining narxini O'ZING hisoblama: `ask` bilan «bittasi qancha?» deb so'ra.
+9. Mijoz ismini qo'shimchalarsiz yoz: «Umidaga» → «Umida», «Jasur akaning» → «Jasur aka». Ism aytilgan bo'lsa customer_query ni HECH QACHON bo'sh qoldirma.
+10. Oxirgi mijoz berilgan bo'lsa va xodim «u», «unga», «uning» desa — `ask` chaqirma: tool'ni chaqir va customer_query ni BO'SH qoldir (kod o'zi oxirgi mijozni oladi).
+11. Narx «jami» deb aytilsa va soni 1 dan ko'p bo'lsa («3 ta, jami 600 ming») — bittasining narxini O'ZING hisoblama: `ask` bilan «bittasi qancha?» deb so'ra.
 
 Hozir: {WEEKDAYS[now.weekday()]}, {now.day}-{MONTH_NAMES_UZ[now.month - 1]} {now.year}, soat {now:%H:%M} (Toshkent).
 {ctx}

@@ -35,6 +35,21 @@ from bot.utils.phone import InvalidPhoneError, normalize_phone
 from bot.utils.translit import search_key
 
 MAX_CALLS = 5
+PRONOUNS = {
+    "u",
+    "unga",
+    "uni",
+    "uning",
+    "undan",
+    "shu",
+    "shunga",
+    "shu odam",
+    "osha",
+    "osha odam",
+    "ushbu",
+    "ushbu odam",
+    "o'sha",
+}
 STAFF = {Role.STAFF.value, Role.ADMIN.value}
 
 
@@ -71,6 +86,8 @@ async def _customer(
         except cust.CustomerNotFoundError:
             return Outcome(text=t.CUSTOMER_NOT_FOUND)
     q = (query or "").strip()
+    if search_key(q) in PRONOUNS:  # "unga", "uning", "shu odam" -> the last discussed customer
+        q = ""
     if not q:
         if ctx.last_customer_id is not None:
             try:

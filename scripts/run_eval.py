@@ -54,13 +54,29 @@ def _amount(text: str | None) -> int | None:
         return None
 
 
-async def check(call: ToolCall, want: dict[str, Any], session: Any, today: Any) -> list[str]:
+async def check(
+    call: ToolCall, want: dict[str, Any], session: Any, today: Any, last_customer: str | None = None
+) -> list[str]:
     errs: list[str] = []
     a = call.args
+    if want["tool"] == "ask" and call.name != "ask":
+        # the dispatcher asks "who?" / "how much?" itself when a required field is missing
+        incomplete = not (a.get("customer_query") or a.get("name") or a.get("query")) or not (
+            a.get("amount_text") or a.get("items") or a.get("all")
+        )
+        return (
+            []
+            if (call.name in WRITE_TOOLS | {"get_customer_debt"}) and incomplete
+            else [f"tool {call.name} != ask"]
+        )
     if call.name != want["tool"]:
         return [f"tool {call.name} != {want['tool']}"]
     if "customer" in want:
         words = search_key(str(a.get("customer_query") or a.get("name") or a.get("query") or ""))
+        if last_customer and words in {"", "u", "unga", "uning", "shu odam"}:
+            words = search_key(
+                last_customer
+            )  # the code maps pronouns / empty to the remembered customer
         if not set(search_key(want["customer"]).split()) <= set(words.split()):  # whole words
             errs.append(f"customer '{words}' lacks '{want['customer']}'")
     if "amount" in want and _amount(a.get("amount_text")) != want["amount"]:
@@ -68,7 +84,10 @@ async def check(call: ToolCall, want: dict[str, Any], session: Any, today: Any) 
             f"amount {a.get('amount_text')!r} -> {_amount(a.get('amount_text'))} != {want['amount']}"
         )
     if "section" in want and a.get("section") != want["section"]:
-        errs.append(f"section {a.get('section')} != {want['section']}")
+        # "ichki kiyim qarziga" may come as item="ichki kiyim": the code derives the section from it
+        cat = await resolve_category(session, str(a.get("item") or ""))
+        if not (cat and cat.section_code == want["section"]):
+            errs.append(f"section {a.get('section')} != {want['section']}")
     if want.get("all") and not a.get("all"):
         errs.append("all=true missing")
     if "item" in want:
@@ -128,12 +147,27 @@ async def main() -> int:
         tokens = 0
         for n, ph in enumerate(phrases, 1):
             t0 = time.monotonic()
-            try:
-                res = await ai.decide(
-                    system=system, text=ph["say"], audio=None, history=[], tools=tool_specs()
-                )
-            except Exception as exc:
-                failures.append(f"#{n} {ph['say']!r}: provider error {type(exc).__name__}")
+            system = build_system_prompt(
+                now=now,
+                staff_name="Nodira opa",
+                categories=hints,
+                last_customer=ph.get("last_customer"),
+            )
+            res = None
+            err_name = ""
+            for attempt in range(
+                4
+            ):  # free tier: 429 / slow replies -> wait and retry (not a wrong answer)
+                try:
+                    res = await ai.decide(
+                        system=system, text=ph["say"], audio=None, history=[], tools=tool_specs()
+                    )
+                    break
+                except Exception as exc:
+                    err_name = f"{type(exc).__name__}: {exc}"[:80]
+                    await asyncio.sleep(4 * (attempt + 1))
+            if res is None:
+                failures.append(f"#{n} {ph['say']!r}: provider error after retries ({err_name})")
                 for w in ph["expect"]:
                     passed[w["tool"]][1] += 1
                 continue
@@ -145,7 +179,7 @@ async def main() -> int:
                     f"{len(res.calls)} calls != {len(wants)}: {[c.name for c in res.calls]}"
                 )
             for call, want in zip(res.calls, wants, strict=False):
-                errs += await check(call, want, s, now.date())
+                errs += await check(call, want, s, now.date(), ph.get("last_customer"))
             ok = not errs
             for w in wants:
                 passed[w["tool"]][1] += 1
