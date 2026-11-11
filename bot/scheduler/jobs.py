@@ -141,9 +141,12 @@ async def send_reminders(bot: Sender, sm: SM, *, today: date | None = None) -> i
         except Exception as e:
             log.warning("reminder_send_failed", error=type(e).__name__)
             continue
-        async with uow(sm, actor_kind="system") as s:
-            await reminders.mark_sent(s, r)
         sent += 1
+        try:
+            async with uow(sm, actor_kind="system") as s:
+                await reminders.mark_sent(s, r)
+        except Exception as e:  # the message is out; a failed log must not stop the other customers
+            log.error("reminder_log_failed", error=type(e).__name__)
         await asyncio.sleep(SEND_PAUSE)
     log.info("reminders_sent", count=sent)
     return sent
@@ -154,11 +157,17 @@ async def morning_call_list(bot: Sender, sm: SM, *, today: date | None = None) -
     day = today or today_tashkent()
     if not await _claim(sm, "calllist.last_sent", day.isoformat()):
         return 0
-    async with read_session(sm) as s:
-        cl = await reminders.call_list(s, day)
+    try:
+        async with read_session(sm) as s:
+            cl = await reminders.call_list(s, day)
+    except Exception:
+        await _release(sm, "calllist.last_sent")
+        raise
     if cl.empty:
         return 0
-    sent = await _broadcast(bot, sm, t.call_list_text(cl, day))
+    sent = 0
+    for chunk in t.split_text(t.call_list_text(cl, day)):
+        sent = max(sent, await _broadcast(bot, sm, chunk))
     if sent == 0 and await _recipients(sm):
         await _release(sm, "calllist.last_sent")
     return sent

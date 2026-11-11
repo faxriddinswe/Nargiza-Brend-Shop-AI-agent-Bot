@@ -186,6 +186,7 @@ async def go(
             segment=data["segment"],
             has_photo=bool(data.get("photo")),
             recipients=len(people),
+            customer_id=data.get("customer_id"),
         )
     delivered = blocked = failed = 0
     for p in people:
@@ -217,3 +218,11 @@ async def _send(bot: Bot, chat_id: int, text: str | None, photo: str | None) -> 
             if attempt:
                 raise
             await asyncio.sleep(min(e.retry_after, 30))
+
+
+@router.callback_query(GoCb.filter())
+@router.callback_query(SegCb.filter())
+@router.callback_query(OneCb.filter())
+async def stale(cb: CallbackQuery) -> None:
+    """Old buttons (a newer announcement was started, or it was already sent)."""
+    await cb.answer(t.BC_EXPIRED, show_alert=True)

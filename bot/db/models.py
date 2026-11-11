@@ -621,6 +621,9 @@ class Broadcast(Base):
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
     created_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
     segment: Mapped[str] = mapped_column(Text)
+    customer_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("customers.id")
+    )  # segment "one": who
     has_photo: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     recipients: Mapped[int] = mapped_column(Integer)
     delivered: Mapped[int] = mapped_column(Integer, server_default="0")

@@ -1069,16 +1069,17 @@ REPORT_HINT: Final = "\n\n💡 Boshqa davr uchun yozing yoki ayting: «o'tgan oy
 def reminder_text(name: str, form: str, lines: list[tuple[str, int, date, str]]) -> str:
     """One polite message per customer; sections on separate lines (Q-21). Never mentions other people."""
     hello = f"Assalomu alaykum, {name} {form}! 🌸"
-    overdue = [x for x in lines if x[3] == "overdue"]
-    if overdue:
-        intro = "Qarz muddati o'tib ketganini muloyimlik bilan eslatamiz:"
-    elif any(x[3] == "due" for x in lines):
-        intro = "Bugun qarz to'lash kuni ekanini eslatamiz:"
-    else:
-        intro = "Qarz muddati yaqinlashayotganini eslatamiz:"
+    kinds = {x[3] for x in lines}
+    intro = {
+        frozenset({"overdue"}): "Qarz muddati o'tib ketganini muloyimlik bilan eslatamiz:",
+        frozenset({"due"}): "Bugun qarz to'lash kuni ekanini eslatamiz:",
+        frozenset({"before"}): "Qarz muddati yaqinlashayotganini eslatamiz:",
+    }.get(frozenset(kinds), "Qarzingiz haqida muloyim eslatma:")
+    mark = {"overdue": "⏰ muddati o'tgan", "due": "📅 bugun", "before": "📅 yaqinlashmoqda"}
     body = [
         f"• {SECTION_NAMES[code]}: {money(rem)} — muddat {format_date(due)}"
-        for code, rem, due, _ in lines
+        + (f" ({mark[k]})" if len(kinds) > 1 else "")
+        for code, rem, due, k in lines
     ]
     return "\n".join(
         [
@@ -1090,6 +1091,21 @@ def reminder_text(name: str, form: str, lines: list[tuple[str, int, date, str]])
             "Qulay vaqtda do'konimizga kirib to'lov qilsangiz bo'ladi. Rahmat! 🙏",
         ]
     )
+
+
+def split_text(text: str, limit: int = 3500) -> list[str]:
+    """Telegram allows 4096 characters per message: cut between lines, never inside one."""
+    chunks: list[str] = []
+    cur = ""
+    for line in text.split("\n"):
+        if cur and len(cur) + len(line) + 1 > limit:
+            chunks.append(cur)
+            cur = line
+        else:
+            cur = f"{cur}\n{line}" if cur else line
+    if cur:
+        chunks.append(cur)
+    return chunks
 
 
 def call_list_text(cl: object, day: date) -> str:
@@ -1116,9 +1132,13 @@ def call_list_text(cl: object, day: date) -> str:
             f"• {i.name} {i.form} — {SECTION_NAMES[i.section]}: {money(i.amount)}"
             for i in cl.no_phone[:15]
         ]
+        if len(cl.no_phone) > 15:
+            out.append(more_debts(len(cl.no_phone) - 15))
     if cl.no_due:
         out += ["", "📅 Muddati belgilanmagan qarzlar:"]
         out += [f"• {who(i)}" for i in cl.no_due[:15]]
+        if len(cl.no_due) > 15:
+            out.append(more_debts(len(cl.no_due) - 15))
         out.append("Muddat qo'yish uchun mijoz kartasidan foydalaning.")
     return "\n".join(out)
 

@@ -46,6 +46,11 @@ async def audience(
                 User.is_blocked.is_(False),
                 User.bot_blocked_at.is_(None),
                 User.ads_opt_out.is_(False),
+                User.id.not_in(
+                    select(Customer.user_id).where(
+                        Customer.deleted_at.is_not(None), Customer.user_id.is_not(None)
+                    )
+                ),
             )
         )
         chats = dict.fromkeys(rows.all())
@@ -59,17 +64,30 @@ async def audience(
             customer = await session.get(Customer, cid)
             if customer is None or customer.deleted_at is not None:
                 continue
-            chat = await users.customer_chat_id(session, customer)
+            chat = await _reachable(session, customer)
             if chat is not None:
                 chats[chat] = None
     else:
         if customer_id is None:
             raise BroadcastError("customer required")
         customer = await session.get(Customer, customer_id)
-        chat = await users.customer_chat_id(session, customer) if customer else None
+        chat = (
+            await _reachable(session, customer)
+            if customer and customer.deleted_at is None
+            else None
+        )
         if chat is not None:
             chats[chat] = None
     return [Recipient(c) for c in chats]
+
+
+async def _reachable(session: AsyncSession, customer: Customer) -> int | None:
+    """Chat of a registered customer who gave consent and can still be messaged."""
+    chat = await users.customer_chat_id(session, customer)
+    if chat is None:
+        return None
+    user = await session.scalar(select(User).where(User.telegram_id == chat))
+    return chat if user is not None and user.consent_at is not None else None
 
 
 def check_text(text: str | None) -> str | None:
@@ -80,11 +98,21 @@ def check_text(text: str | None) -> str | None:
 
 
 async def start(
-    session: AsyncSession, actor: User, *, segment: str, has_photo: bool, recipients: int
+    session: AsyncSession,
+    actor: User,
+    *,
+    segment: str,
+    has_photo: bool,
+    recipients: int,
+    customer_id: int | None = None,
 ) -> int:
     require_staff(actor)
     row = Broadcast(
-        created_by=actor.id, segment=segment, has_photo=has_photo, recipients=recipients
+        created_by=actor.id,
+        segment=segment,
+        has_photo=has_photo,
+        recipients=recipients,
+        customer_id=customer_id,
     )
     session.add(row)
     await session.flush()

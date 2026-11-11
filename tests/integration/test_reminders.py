@@ -159,3 +159,37 @@ async def test_morning_call_list_goes_to_staff_once(sm: SM) -> None:
     assert await jobs.morning_call_list(bot, sm, today=day) == 1
     assert "Muddati o'tganlar" in bot.sent[0][1]
     assert await jobs.morning_call_list(bot, sm, today=day) == 0
+
+
+async def test_call_list_sums_debts_of_a_customer_without_phone(sm: SM) -> None:
+    st, c, cats = await _world(sm)
+    async with uow(sm, actor_id=st.id) as s:
+        await s.execute(update(Customer).where(Customer.id == c.id).values(phone=None))
+        for amt in (100_000, 200_000):
+            await ledger.create_debts(
+                s,
+                st,
+                customer_id=c.id,
+                items=[ItemInput(cats["ko'ylak"], 1, amt)],
+                due_date=None,
+                today=D0,
+            )
+    async with read_session(sm) as s:
+        cl = await reminders.call_list(s, D0)
+    assert [i.amount for i in cl.no_phone] == [300_000]
+
+
+def test_mixed_reminder_text_marks_each_line_and_long_lists_split() -> None:
+    from bot.texts import uz_latn as t
+
+    text = t.reminder_text(
+        "Umida",
+        "opa",
+        [
+            ("shop", 100_000, date(2026, 11, 1), "overdue"),
+            ("lingerie", 50_000, date(2026, 11, 9), "before"),
+        ],
+    )
+    assert "muddati o'tgan)" in text and "yaqinlashmoqda)" in text
+    parts = t.split_text("\n".join(f"line {i} " + "x" * 80 for i in range(100)))
+    assert len(parts) > 1 and all(len(p) <= 3500 for p in parts)

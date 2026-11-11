@@ -150,7 +150,7 @@ async def call_list(session: AsyncSession, today: date) -> CallList:
     remaining = Debt.total_amount - func.coalesce(paid.c.paid, 0)
     rows = (
         await session.execute(
-            select(Customer.name, Customer.address_form, Customer.phone, Section.code,
+            select(Customer.id, Customer.name, Customer.address_form, Customer.phone, Section.code,
                    cast(remaining, BigInteger), Debt.due_date)
             .join(Customer, Customer.id == Debt.customer_id)
             .join(Section, Section.id == Debt.section_id)
@@ -160,8 +160,8 @@ async def call_list(session: AsyncSession, today: date) -> CallList:
         )
     ).all()  # fmt: skip
     cl = CallList([], [], [])
-    seen_no_phone: set[tuple[str, str]] = set()
-    for name, form, phone, code, rem, due in rows:
+    no_phone: dict[tuple[int, str], CallItem] = {}
+    for cid, name, form, phone, code, rem, due in rows:
         item = CallItem(
             name, form, phone, code, int(rem), (today - due).days if due and due < today else 0, due
         )
@@ -169,7 +169,11 @@ async def call_list(session: AsyncSession, today: date) -> CallList:
             cl.no_due.append(item)
         elif due < today:
             cl.overdue.append(item)
-        if phone is None and (name, code) not in seen_no_phone:
-            seen_no_phone.add((name, code))
-            cl.no_phone.append(item)
+        if phone is None:
+            known = no_phone.get((cid, code))
+            if known is None:
+                no_phone[(cid, code)] = CallItem(name, form, None, code, int(rem))
+            else:
+                known.amount += int(rem)  # the whole debt of this customer in this section
+    cl.no_phone = sorted(no_phone.values(), key=lambda i: -i.amount)
     return cl

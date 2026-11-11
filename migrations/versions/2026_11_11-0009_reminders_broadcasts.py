@@ -37,6 +37,7 @@ def upgrade() -> None:
         sa.Column("id", sa.BigInteger(), sa.Identity(), primary_key=True),
         sa.Column("created_by", sa.BigInteger(), sa.ForeignKey("users.id", name="fk_broadcasts_created_by_users"), nullable=False),
         sa.Column("segment", sa.Text(), nullable=False),
+        sa.Column("customer_id", sa.BigInteger(), sa.ForeignKey("customers.id", name="fk_broadcasts_customer_id_customers")),
         sa.Column("has_photo", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("recipients", sa.Integer(), nullable=False),
         sa.Column("delivered", sa.Integer(), nullable=False, server_default="0"),

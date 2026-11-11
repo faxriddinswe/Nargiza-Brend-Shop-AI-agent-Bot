@@ -96,3 +96,19 @@ async def test_text_limit_history_and_unknown_segment(sm: SM) -> None:
     with pytest.raises(broadcasts.BroadcastError):
         async with read_session(sm) as s:
             await broadcasts.audience(s, "everybody", D0)
+
+
+async def test_one_person_skips_deleted_and_records_target(sm: SM) -> None:
+    st, c = await _world(sm)
+    async with uow(sm, actor_id=st.id) as s:
+        await s.execute(
+            update(Customer)
+            .where(Customer.id == c["a"].id)
+            .values(deleted_at=datetime.now(UTC), deleted_by=st.id)
+        )
+        bid = await broadcasts.start(
+            s, st, segment="one", has_photo=False, recipients=1, customer_id=c["b"].id
+        )
+    assert await _aud(sm, "one", c["a"].id) == set()
+    async with read_session(sm) as s:
+        assert (await s.get(Broadcast, bid)).customer_id == c["b"].id  # type: ignore[union-attr]
