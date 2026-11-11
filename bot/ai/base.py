@@ -19,7 +19,10 @@ class ToolSpec:
 @dataclass(frozen=True, slots=True)
 class ToolCall:
     name: str
-    args: dict[str, Any]
+    args: dict[str, Any]  # from the model: UNTRUSTED
+    # Answers the user tapped on buttons (customer id, section, debt...). Set only by our own code from
+    # server-side state — the model cannot set it (an `_fix` key in `args` is ignored).
+    fix: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)

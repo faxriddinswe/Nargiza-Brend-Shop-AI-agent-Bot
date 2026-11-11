@@ -31,7 +31,12 @@ sequenceDiagram
 | The AI never calculates | Numbers are passed as spoken (`amount_text`, `unit_price_text`, `due_text`, `phone_text`) and parsed by `utils/money.py` / `utils/dates.py`. FIFO, balances and differences come from `services/`. |
 | The AI never decides permissions | `dispatcher.run_call` checks the role in code; every service re-checks it. |
 | The AI never guesses | Unclear customer, product, section, debt, amount, due date → a question (`ask` tool or dispatcher-generated choices). Ambiguous amounts (`1500`, `350-400 ming`, `1.500 mln`) are asked again. |
-| The AI never picks ids | Customers are found by code from the words; ids only come from buttons the user tapped. |
+| The AI never picks ids | Customers are found by code from the words. Ids, sections and debts chosen on buttons live in a server-side `ToolCall.fix`; an `_fix` key in the model's output is ignored. Buttons carry a nonce, so an older question's buttons are refused. |
+| A wrong customer is worse than a question | A name is accepted silently only if every spoken word is a whole word of exactly one customer's name (or the digits end exactly one phone). A lone fuzzy hit ("Umid" → "Umida") is confirmed with ✅/❌ first. |
+| "350" is never silent | A unit-less amount (BR-076) is read as 350 000 and a ⚠️ line above the card says so. Ambiguous ones (`1500`, `350-400 ming`) are asked again. |
+| Context is short-lived | The last customer and the last 3 exchanges are forgotten after 15 minutes (BR-111). |
+| Budget protection | Per staff member: 10 requests/minute and 300/day (from `ai_calls`), 4 model calls at once, text cut at 1000 characters, `max_output_tokens=1024`. |
+| Errors never leak text | Logs contain exception type and code location only (`safe_frames`), never the message. |
 | Nothing is saved without confirmation | Writes only create a `pending_actions` card; the ✅ runs the action (same path as the button flows). |
 | Section is decided in code | Product → category → section via the synonyms table; the model's words are only input. |
 | Logging without personal data | `ai_calls` stores tokens, latency, estimated cost, tool names — never text or audio. |
@@ -54,7 +59,7 @@ and selected with `AI_PROVIDER`.
 | `add_payment` | write | Customer paid; optional section or a specific debt ("oyoq kiyim qarzidan") |
 | `write_off` | write | Forgive a debt (partial or `all`) |
 | `create_customer` / `delete_customer` | write | Customer management |
-| `cancel_last_entry` | write | Cancel the latest record (optionally of one customer) |
+| `cancel_last_entry` | write | Cancel the latest record — with no name, the caller's own latest; the card shows who wrote it and when |
 | `get_customer_debt`, `search_customer` | read | Answer immediately |
 | `list_debtors`, `list_overdue` | read | Debtors by size; overdue debts with days |
 | `ask` | — | One short clarifying question |

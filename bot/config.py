@@ -64,6 +64,9 @@ class Settings(BaseSettings):
     ai_output_usd_per_m: float = 2.50
     # Voice messages longer than this are refused (cost and accuracy)
     voice_max_seconds: int = 90
+    # Per staff member: protects the budget if an account is abused or a loop goes wrong
+    ai_per_minute: int = 10
+    ai_per_day: int = 300
 
     # Feature flaglar
     enable_card_payments: bool = False

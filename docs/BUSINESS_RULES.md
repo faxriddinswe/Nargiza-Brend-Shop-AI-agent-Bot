@@ -120,6 +120,7 @@
 - **BR-083** If a cash sale is exchanged — the bot asks whether the customer pays the difference or is refunded it.
 - **BR-077** 💡 Amount limits: an amount below 10 000 so'm or above 1 000 000 000 so'm — the bot asks (it may have been misspoken). "1.500 mln" (separator or decimal?), "350-400 ming" (a range), "500 ming 450" — the bot asks.
 - **BR-076** ✅ A small number with no unit (< 1000, e.g. "350") is taken as thousands (350 000 so'm), shown explicitly on the card. A unitless number between 1000 and 9999 ("1500") — the bot asks.
+- **BR-079** 💡 AI/voice path: a customer name is accepted without asking only when it is an unambiguous whole-word match; a single approximate match is confirmed; several matches are asked. Skipped requests (after a question or a new-customer card) are reported to the user, never silently dropped.
 - **BR-084** Return only: if taken on debt — deducted from the debt; if cash — the sale is reversed (a return record). Stock increases.
   ❓ Q-11: if part of the debt has already been paid and the product is returned (e.g. debt 300 000, 200 000 paid, a 300 000 product returned) — is the customer refunded 100 000 in cash?
 - **BR-085** Cross-section exchange (ko'ylak → ichki kiyim) — the amount leaves one section and enters the other; the relevant section owner is notified (BR-026).

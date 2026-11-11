@@ -55,6 +55,7 @@ class RecentCb(CallbackData, prefix="rc"):
 
 
 class AiChoiceCb(CallbackData, prefix="ai"):
+    n: int  # nonce of the question this button belongs to (buttons of older questions are refused)
     i: int
 
 
@@ -196,8 +197,10 @@ def restore_list(rows: Sequence[tuple[int, str]]) -> InlineKeyboardMarkup:
     )
 
 
-def ai_choices(labels: Sequence[str]) -> InlineKeyboardMarkup:
+def ai_choices(nonce: int, labels: Sequence[str]) -> InlineKeyboardMarkup:
     """One button per answer the AI offers (customer, section, debt, due date, product type)."""
     return InlineKeyboardMarkup(
-        inline_keyboard=[[_btn(label[:60], AiChoiceCb(i=i))] for i, label in enumerate(labels)]
+        inline_keyboard=[
+            [_btn(label[:60], AiChoiceCb(n=nonce, i=i))] for i, label in enumerate(labels)
+        ]
     )

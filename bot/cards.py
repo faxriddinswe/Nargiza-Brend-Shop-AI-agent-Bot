@@ -15,7 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.db.models import Customer, PaymentKind, User
 from bot.services import ledger, pending
+from bot.services import staff as staff_svc
 from bot.texts import uz_latn as t
+from bot.utils.dates import TASHKENT
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,9 +125,15 @@ async def cancel_entry_card(session: AsyncSession, actor: User, entry: ledger.En
         action="cancel_entry",
         payload={"kind": entry.kind, "id": entry.id},
     )
-    return Card(
-        key, t.cancel_card(entry.kind, entry.customer_name, entry.amount, entry.created_at.date())
+    by = "—"
+    if entry.created_by is not None:
+        author = await session.get(User, entry.created_by)
+        by = await staff_svc.actor_label(session, author) if author else "—"
+    local = entry.created_at.astimezone(TASHKENT)
+    text = t.cancel_card_by(
+        entry.kind, entry.customer_name, entry.amount, local.date(), by, f"{local:%H:%M}"
     )
+    return Card(key, text)
 
 
 async def delete_customer_card(session: AsyncSession, actor: User, customer: Customer) -> Card:

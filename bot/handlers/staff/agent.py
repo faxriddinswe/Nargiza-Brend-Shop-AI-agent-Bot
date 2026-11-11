@@ -7,14 +7,18 @@ without the ✅ on the card. If the model is down, staff keep working with the b
 
 from __future__ import annotations
 
+import asyncio
+import secrets
 import time
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import structlog
 from aiogram import Bot, F, Router
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.ai import dispatcher as ai_dispatch
@@ -27,6 +31,7 @@ from bot.db.session import read_session, uow
 from bot.handlers.staff.ledger import MENU_TEXTS
 from bot.keyboards import common as kb_common
 from bot.keyboards import ledger as kb
+from bot.logging_setup import safe_frames
 from bot.middlewares.auth import RoleFilter
 from bot.services import customers as cust
 from bot.services import staff as staff_svc
@@ -42,6 +47,8 @@ router.callback_query.filter(RoleFilter(Role.STAFF, Role.ADMIN))
 SM = async_sessionmaker[AsyncSession]
 CONTEXT_TTL = 15 * 60  # BR-111: the "last customer" is forgotten after 15 minutes of silence
 HISTORY_TURNS = 3
+MAX_TEXT_CHARS = 1000
+_SLOTS = asyncio.Semaphore(4)
 ALERT_COOLDOWN = 600
 _last_alert = 0.0
 
@@ -108,6 +115,7 @@ async def on_choice(
     pend = data.get("ai_pending")
     if (
         not pend
+        or pend.get("nonce") != callback_data.n  # a button from an older question
         or not (0 <= callback_data.i < len(pend["patches"]))
         or time.time() - pend["at"] > CONTEXT_TTL
     ):
@@ -115,7 +123,7 @@ async def on_choice(
         return
     await state.update_data(ai_pending=None)
     call = ai_dispatch.with_choice(
-        ToolCall(pend["name"], pend["args"]), pend["patches"][callback_data.i]
+        ToolCall(pend["name"], pend["args"], pend.get("fix", {})), pend["patches"][callback_data.i]
     )
     await _run_and_reply(msg, user, state, sm, [call], heard=None)
 
@@ -136,9 +144,14 @@ async def _process(
     if ai is None:
         await message.answer(t.AI_NOT_CONFIGURED)
         return
+    if await _rate_limited(sm, settings, user.id):
+        await message.answer(t.AI_SLOW_DOWN)
+        return
+    if text is not None:
+        text = text[:MAX_TEXT_CHARS]
     data = await state.get_data()
-    fresh = time.time() - float(data.get("ai_at", 0)) <= CONTEXT_TTL
-    last_id = data.get("ai_last_customer") if fresh else None
+    fresh = _is_fresh(data)
+    last_id = _fresh_last(data)
     history = [Turn(u, a) for u, a in data.get("ai_history", [])][-HISTORY_TURNS:] if fresh else []
 
     async with read_session(sm) as s:
@@ -168,7 +181,7 @@ async def _process(
         error = str(exc) or "AIUnavailable"
     except Exception as exc:  # never let a vendor bug reach the staff member
         error = type(exc).__name__
-        log.exception("ai_unexpected_error", error_type=error)
+        log.error("ai_unexpected_error", error_type=error, frames=safe_frames(exc))
     latency = int((time.monotonic() - started) * 1000)
     if status is not None:
         try:
@@ -185,9 +198,7 @@ async def _process(
     if not calls:
         await message.answer(t.AI_NOT_UNDERSTOOD)
         return
-    await _run_and_reply(
-        message, user, state, sm, calls, heard=text, last_customer=int(last_id) if last_id else None
-    )
+    await _run_and_reply(message, user, state, sm, calls, heard=text)
 
 
 async def _run_and_reply(
@@ -198,17 +209,18 @@ async def _run_and_reply(
     calls: list[ToolCall],
     *,
     heard: str | None,
-    last_customer: int | None = None,
 ) -> None:
     data = await state.get_data()
-    last = last_customer if last_customer is not None else data.get("ai_last_customer")
-    ctx = ai_dispatch.Context(today=today_tashkent(), last_customer_id=int(last) if last else None)
+    last = _fresh_last(data)  # BR-111: a customer older than 15 minutes is forgotten
+    ctx = ai_dispatch.Context(today=today_tashkent(), last_customer_id=last)
     async with uow(sm, actor_id=user.id) as s:
         actor = await s.get(User, user.id)
         if actor is None:
             return
         outcomes = await ai_dispatch.run_calls(s, actor, calls, ctx)
 
+    skipped = len(calls[: ai_dispatch.MAX_CALLS]) - len(outcomes)
+    outcomes_note = t.ai_skipped(skipped) if skipped > 0 else None
     summary: list[str] = []
     new_last = last
     for out, _call in zip(outcomes, calls, strict=False):
@@ -223,6 +235,8 @@ async def _run_and_reply(
         elif out.text:
             await msg.answer(out.text)
             summary.append(out.text.splitlines()[0])
+    if outcomes_note:
+        await msg.answer(outcomes_note)
     history = list(data.get("ai_history", []))
     spoken = heard or next((o.heard for o in outcomes if o.heard), None) or "[ovozli xabar]"
     history.append([spoken[:200], " | ".join(summary)[:200]])
@@ -233,16 +247,19 @@ async def _run_and_reply(
 
 async def _ask(msg: Message, state: FSMContext, out: ai_dispatch.Outcome) -> None:
     if out.choices and out.resume is not None:
+        nonce = secrets.randbelow(1_000_000)
         await state.update_data(
             ai_pending={
                 "name": out.resume.name,
                 "args": out.resume.args,
+                "fix": out.resume.fix,
+                "nonce": nonce,
                 "patches": [c.patch for c in out.choices],
                 "at": time.time(),
             }
         )
         await msg.answer(
-            out.question or "", reply_markup=kb.ai_choices([c.label for c in out.choices])
+            out.question or "", reply_markup=kb.ai_choices(nonce, [c.label for c in out.choices])
         )
     else:
         await msg.answer(out.question or "")
@@ -295,3 +312,32 @@ async def _alert_admins(bot: Bot, sm: SM, error: str) -> None:
             await bot.send_message(adm.telegram_id, t.ai_down_alert(error[:60]))
         except Exception:
             log.warning("admin_alert_failed")
+
+
+async def _rate_limited(sm: SM, settings: Settings, user_id: int) -> bool:
+    """Per-user ceiling from the call log (`ai_per_minute`, `ai_per_day`) — protects the budget."""
+    now = datetime.now(UTC)
+    limits = (
+        (timedelta(minutes=1), settings.ai_per_minute),
+        (timedelta(days=1), settings.ai_per_day),
+    )
+    async with read_session(sm) as s:
+        for window, limit in limits:
+            n = await s.scalar(
+                select(func.count())
+                .select_from(AiCall)
+                .where(AiCall.user_id == user_id, AiCall.created_at > now - window)
+            )
+            if (n or 0) >= limit:
+                return True
+    return False
+
+
+def _is_fresh(data: dict[str, Any]) -> bool:
+    return time.time() - float(data.get("ai_at", 0)) <= CONTEXT_TTL
+
+
+def _fresh_last(data: dict[str, Any]) -> int | None:
+    """The last discussed customer — only within the 15-minute window (BR-111), else nobody."""
+    last = data.get("ai_last_customer")
+    return int(last) if last and _is_fresh(data) else None

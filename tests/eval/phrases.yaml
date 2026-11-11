@@ -146,3 +146,15 @@
   expect: [{tool: add_payment, customer: umida, amount: 100000}, {tool: add_debt, customer: jasur, items: [{cat: shim, qty: 1, price: 450000}], due: none}]
 - say: "Madina 50 ming berdi va Zebo opaning qarzi qancha?"
   expect: [{tool: add_payment, customer: madina, amount: 50000}, {tool: get_customer_debt, customer: zebo}]
+# --- conversation context: `last_customer` is what the bot remembers (BR-110)
+- say: "Unga 50 ming berdi"
+  last_customer: "Umida opa"
+  expect: [{tool: add_payment, customer: umida, amount: 50000}]
+- say: "Uning qarzi qancha?"
+  last_customer: "Jasur aka"
+  expect: [{tool: get_customer_debt, customer: jasur}]
+# --- unit-less and tricky amounts (our parser flags "350" -> 350 000 and asks about unclear ones)
+- say: "Umidaga ko'ylak 350 qarz"
+  expect: [{tool: add_debt, customer: umida, items: [{cat: "ko'ylak", qty: 1, price: 350000}], due: unset}]
+- say: "Madinaga 3 ta ko'ylak, jami 600 ming, qarz"
+  expect: [{tool: ask}]

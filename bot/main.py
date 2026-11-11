@@ -7,8 +7,6 @@ router'lar → long polling (qaror: docs/ARCHITECTURE.md).
 from __future__ import annotations
 
 import asyncio
-import pathlib
-import traceback
 
 import structlog
 from aiogram import Bot, Dispatcher
@@ -26,7 +24,7 @@ from bot.handlers.staff import agent as staff_agent
 from bot.handlers.staff import confirm as staff_confirm
 from bot.handlers.staff import ledger as staff_ledger
 from bot.handlers.staff import menu as staff_menu
-from bot.logging_setup import setup_logging
+from bot.logging_setup import safe_frames, setup_logging
 from bot.middlewares.auth import UserMiddleware
 from bot.services import users as users_svc
 from bot.texts import uz_latn as t
@@ -48,9 +46,11 @@ async def on_error(event: ErrorEvent) -> bool:
     """Kutilmagan xato: log + foydalanuvchiga muloyim xabar. Shaxsiy ma'lumot log'ga yozilmaydi."""
     # Exception *messages* can contain personal data (Postgres DETAIL: Key (phone)=(...)), so we log
     # only the type and the code location, never the message.
-    tb = traceback.extract_tb(event.exception.__traceback__)
-    frames = [f"{pathlib.PurePath(f.filename).name}:{f.lineno}:{f.name}" for f in tb[-6:]]
-    log.error("unhandled_error", error_type=type(event.exception).__name__, frames=frames)
+    log.error(
+        "unhandled_error",
+        error_type=type(event.exception).__name__,
+        frames=safe_frames(event.exception),
+    )
     msg: Message | None = event.update.message or (
         event.update.callback_query.message  # type: ignore[assignment]
         if event.update.callback_query

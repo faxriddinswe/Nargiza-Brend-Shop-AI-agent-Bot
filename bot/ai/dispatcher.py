@@ -11,6 +11,7 @@ It reuses the same services and card builders as the button flows, so both paths
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
@@ -40,7 +41,7 @@ STAFF = {Role.STAFF.value, Role.ADMIN.value}
 @dataclass(frozen=True, slots=True)
 class Choice:
     label: str
-    patch: dict[str, Any]  # merged into the call's `_fix` when the user taps it
+    patch: dict[str, Any]  # merged into the call's trusted `fix` when the user taps it
 
 
 @dataclass(slots=True)
@@ -80,14 +81,32 @@ async def _customer(
     found = await cust.search(session, q, limit=6)
     if not found:
         return Outcome(text=t.ai_customer_missing(q))
-    if len(found) == 1:
-        return found[0]
-    key = search_key(q)
-    exact = [c for c in found if c.search_name == key]
-    if len(exact) == 1:  # one exact name among fuzzy neighbours
-        return exact[0]
+    # A name is accepted WITHOUT asking only when every spoken word is a whole word of exactly one
+    # customer's name (or the digits match the end of exactly one phone). A single fuzzy hit like
+    # "Umid" -> "Umida" is confirmed first (a wrong customer = a wrong debt).
+    tokens = set(search_key(re.sub(r"[\d+()\-]", " ", q)).split())
+    digits = re.sub(r"\D", "", q)
+    strong = [
+        c
+        for c in found
+        if (tokens and tokens <= set(c.search_name.split()))
+        or (not tokens and len(digits) >= 4 and (c.phone or "").endswith(digits))
+    ]
+    if len(strong) == 1:
+        return strong[0]
+    pool = strong if len(strong) > 1 else found
+    if len(strong) == 0 and len(found) == 1:
+        only = found[0]
+        return Outcome(
+            question=t.ai_customer_confirm(f"{only.name} {only.address_form}"),
+            choices=[
+                Choice(t.BTN_YES, {"customer_id": only.id}),
+                Choice(t.BTN_NO, {"abort": True}),
+            ],
+            resume=call,
+        )
     choices = []
-    for c in found[:5]:
+    for c in pool[:5]:
         owed = sum((await ledger.balances(session, c.id)).values())
         label = t.customer_button(
             f"{c.name} {c.address_form}", c.note or (f"…{c.phone[-4:]}" if c.phone else None), owed
@@ -115,12 +134,16 @@ async def resolve_category(session: AsyncSession, text: str) -> ledger.CategoryR
     hits = {
         cid
         for w, cid in words.items()
-        if len(w) >= 3 and (key.startswith(w) or (len(key) >= 4 and w.startswith(key)))
+        if len(w) >= 4 and (key.startswith(w) or (len(key) >= 5 and w.startswith(key)))
     }
     if len(hits) == 1:  # "ko'ylakni", "yubkalar", "tufl"
         return refs[hits.pop()]
     if not hits:
-        best = process.extractOne(key, list(words), scorer=fuzz.ratio, score_cutoff=82)
+        best = (
+            process.extractOne(key, list(words), scorer=fuzz.ratio, score_cutoff=82)
+            if len(key) >= 5
+            else None
+        )
         if best:
             return refs[words[best[0]]]
     return None
@@ -156,6 +179,7 @@ async def _add_debt(
     mapping = fix.get("item_categories", {})
     by_id = {x.id: x for x in await ledger.categories(session)}
     items: list[ledger.ItemInput] = []
+    assumed: list[tuple[str, int]] = []
     for idx, it in enumerate(args.items):
         cat = (
             by_id.get(int(mapping[str(idx)]))
@@ -165,9 +189,12 @@ async def _add_debt(
         if cat is None:
             return await _all_choices_for_item(session, call, idx, fix, it.item)
         try:
-            price = parse_amount(it.unit_price_text).value
+            parsed_price = parse_amount(it.unit_price_text)
         except AmountParseError:
             return Outcome(question=t.ai_price_question(it.item), customer_id=c.id)
+        price = parsed_price.value
+        if parsed_price.assumed_thousands:
+            assumed.append((it.unit_price_text, price))
         items.append(ledger.ItemInput(cat.id, it.quantity, price, it.note))
     due_text = fix.get("due_text", args.due_text)
     if due_text is None:
@@ -190,7 +217,14 @@ async def _add_debt(
         card = await cards.debt_card(session, actor, c, items, due)
     except ledger.LedgerError:
         return Outcome(text=t.AI_NOT_UNDERSTOOD, customer_id=c.id)
-    return Outcome(text=card.text, card=card, customer_id=c.id)
+    return Outcome(text=_with_assumed(card.text, assumed), card=card, customer_id=c.id)
+
+
+def _with_assumed(text: str, assumed: list[tuple[str, int]]) -> str:
+    """BR-076: "350" was read as 350 000 — say so above the card, like the button flow does."""
+    if not assumed:
+        return text
+    return "\n".join(t.ai_assumed_thousands(raw, value) for raw, value in assumed) + "\n\n" + text
 
 
 async def _pay(
@@ -207,6 +241,7 @@ async def _pay(
     codes = {v: k for k, v in ids.items()}
     section_code = fix.get("section") or args.section
     debt_id = fix.get("debt_id")
+    debt_remaining: int | None = None
     item = getattr(args, "item", None)
 
     if item and debt_id is None:  # "oyoq kiyim qarzidan ayir" (BR-062)
@@ -250,6 +285,7 @@ async def _pay(
         if debt is None:
             return Outcome(text=t.PAY_CHANGED, customer_id=c.id)
         section_id = debt.section_id
+        debt_remaining = debt.remaining
     elif section_code is not None:
         section_id = ids[section_code]
     elif len(balances) == 1:
@@ -270,13 +306,29 @@ async def _pay(
     if not owed:
         return Outcome(text=t.no_debt_for(cards.who(c)), customer_id=c.id)
 
-    if isinstance(args, tools.WriteOff) and args.all:
-        amount = owed
+    want_all = isinstance(args, tools.WriteOff) and args.all and not fix.get("amount_only")
+    spoken = None if fix.get("all_only") else args.amount_text
+    if want_all and spoken:  # "hammasini" AND an amount: do not guess which one
+        return Outcome(
+            question=t.ai_all_or_amount(spoken),
+            choices=[
+                Choice(t.BTN_WO_ALL, {"all_only": True}),
+                Choice(f"Faqat {spoken}", {"amount_only": True}),
+            ],
+            resume=call,
+            customer_id=c.id,
+        )
+    assumed: list[tuple[str, int]] = []
+    if want_all:
+        amount = debt_remaining if debt_remaining is not None else owed
     else:
         try:
-            amount = parse_amount(args.amount_text or "").value
+            parsed = parse_amount(spoken or "")
         except AmountParseError:
             return Outcome(question=t.ai_amount_question(), customer_id=c.id)
+        amount = parsed.value
+        if parsed.assumed_thousands:
+            assumed.append((spoken or "", amount))
     try:
         card = await cards.payment_card(
             session, actor, c, section_id=section_id, amount=amount, kind=kind,
@@ -286,7 +338,7 @@ async def _pay(
         return Outcome(text=t.overpay(cards.who(c), e.owed, e.amount), customer_id=c.id)
     except (NothingToPayError, DebtNotOpenError):
         return Outcome(text=t.no_debt_for(cards.who(c)), customer_id=c.id)
-    return Outcome(text=card.text, card=card, customer_id=c.id)
+    return Outcome(text=_with_assumed(card.text, assumed), card=card, customer_id=c.id)
 
 
 async def _create_customer(
@@ -345,8 +397,11 @@ async def _cancel_last(
         if isinstance(c, Outcome):
             return c
         customer_id = c.id
-    entries = await ledger.recent_entries(session, limit=30)
-    entry = next((e for e in entries if customer_id is None or e.customer_id == customer_id), None)
+    entries = await ledger.recent_entries(session, limit=30, customer_id=customer_id)
+    # without a name, "the last record" means MY last record; only if I have none, the latest of anyone
+    entry = next((e for e in entries if customer_id is not None or e.created_by == actor.id), None)
+    if entry is None and customer_id is None:
+        entry = entries[0] if entries else None
     if entry is None:
         return Outcome(text=t.AI_NOTHING_TO_CANCEL)
     card = await cards.cancel_entry_card(session, actor, entry)
@@ -438,7 +493,9 @@ async def run_call(session: AsyncSession, actor: User, call: ToolCall, ctx: Cont
         actor.role not in STAFF or actor.is_blocked
     ):  # permissions are decided here, never by the model
         return Outcome(text=t.CARD_NOT_YOURS)
-    fix = call.args.get("_fix", {}) if isinstance(call.args.get("_fix", {}), dict) else {}
+    fix = call.fix  # trusted: only our own code sets it (never taken from model output)
+    if fix.get("abort"):
+        return Outcome(text=t.AI_ABORTED)
     raw = {k: v for k, v in call.args.items() if k != "_fix"}
     try:
         args = tools.validate(call.name, raw)
@@ -477,14 +534,11 @@ async def run_call(session: AsyncSession, actor: User, call: ToolCall, ctx: Cont
 
 
 def with_choice(call: ToolCall, patch: dict[str, Any]) -> ToolCall:
-    """The call to re-run after the user tapped a choice (patch merges into `_fix`)."""
-    fix = {**(call.args.get("_fix") or {}), **patch}
+    """The call to re-run after the user tapped a choice (the patch merges into the trusted `fix`)."""
+    fix = {**call.fix, **patch}
     if "item_categories" in patch:  # keep earlier item answers
-        fix["item_categories"] = {
-            **(call.args.get("_fix") or {}).get("item_categories", {}),
-            **patch["item_categories"],
-        }
-    return ToolCall(call.name, {**call.args, "_fix": fix})
+        fix["item_categories"] = {**call.fix.get("item_categories", {}), **patch["item_categories"]}
+    return ToolCall(call.name, call.args, fix)
 
 
 async def run_calls(
@@ -498,8 +552,8 @@ async def run_calls(
         outcomes.append(out)
         if out.customer_id is not None:
             current = Context(today=ctx.today, last_customer_id=out.customer_id)
-        if out.question is not None:
-            break
+        if out.question is not None or (out.card is not None and "create_customer" in call.name):
+            break  # the rest must wait for the answer / for the new customer to be confirmed
     return outcomes
 
 

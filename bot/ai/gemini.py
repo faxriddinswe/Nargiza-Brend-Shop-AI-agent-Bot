@@ -64,6 +64,7 @@ class GeminiProvider:
         config = types.GenerateContentConfig(
             system_instruction=system,
             temperature=0.0,
+            max_output_tokens=1024,  # a tool call is short; caps the cost if the model rambles
             tools=[
                 types.Tool(
                     function_declarations=[

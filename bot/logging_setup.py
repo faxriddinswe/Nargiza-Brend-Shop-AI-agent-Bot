@@ -42,3 +42,14 @@ def setup_logging(level: str = "INFO") -> None:
     root.handlers.clear()
     root.addHandler(handler)
     root.setLevel(level.upper())
+
+
+def safe_frames(exc: BaseException, depth: int = 6) -> list[str]:
+    """Code locations of an exception (file:line:function) — never its message, which may hold personal data."""
+    import pathlib
+    import traceback
+
+    return [
+        f"{pathlib.PurePath(f.filename).name}:{f.lineno}:{f.name}"
+        for f in traceback.extract_tb(exc.__traceback__)[-depth:]
+    ]

@@ -61,7 +61,7 @@ async def check(call: ToolCall, want: dict[str, Any], session: Any, today: Any) 
         return [f"tool {call.name} != {want['tool']}"]
     if "customer" in want:
         words = search_key(str(a.get("customer_query") or a.get("name") or a.get("query") or ""))
-        if search_key(want["customer"]) not in words:
+        if not set(search_key(want["customer"]).split()) <= set(words.split()):  # whole words
             errs.append(f"customer '{words}' lacks '{want['customer']}'")
     if "amount" in want and _amount(a.get("amount_text")) != want["amount"]:
         errs.append(

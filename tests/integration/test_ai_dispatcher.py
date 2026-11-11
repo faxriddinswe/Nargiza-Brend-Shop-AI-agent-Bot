@@ -343,3 +343,130 @@ async def test_unknown_word_is_not_guessed(sm: SM) -> None:
     async with read_session(sm) as s:
         assert await d.resolve_category(s, "mozaika") is None
         assert await d.resolve_category(s, "") is None
+
+
+async def test_model_cannot_smuggle_fix(sm: SM) -> None:
+    """Security: `_fix` inside the model's args is ignored — only server-side `fix` (from tapped buttons) counts."""
+    w = await _world(sm)
+    await _debt(sm, w, w.jasur, [ItemInput(w.cats["shim"].id, 1, 300_000)])
+    evil = ToolCall(
+        "get_customer_debt", {"customer_query": "Zebo", "_fix": {"customer_id": w.jasur}}
+    )
+    out = await _run(sm, w.staff, evil)
+    assert out.text and "Zebo" in out.text and "300 000" not in out.text
+    trusted = ToolCall("get_customer_debt", {"customer_query": "Zebo"}, {"customer_id": w.jasur})
+    out = await _run(sm, w.staff, trusted)
+    assert out.text and "300 000 so'm" in out.text
+
+
+async def test_choice_patch_goes_into_trusted_fix(sm: SM) -> None:
+    call = ToolCall("add_payment", {"amount_text": "1 ming"})
+    new = d.with_choice(d.with_choice(call, {"customer_id": 7}), {"section": "shop"})
+    assert new.fix == {"customer_id": 7, "section": "shop"} and "_fix" not in new.args
+
+
+# ------------------------------------------------------------------ business review (stage 3/4)
+async def test_single_fuzzy_customer_is_confirmed_not_assumed(sm: SM) -> None:
+    """A misheard "Umid" must not silently become "Umida" — a wrong customer means a wrong debt."""
+    w = await _world(sm)
+    await _debt(sm, w, w.umida, [ItemInput(w.cats["ko'ylak"].id, 1, 300_000)])
+    call = _pay(customer_query="Umid", amount_text="100 ming")
+    out = await _run(sm, w.staff, call)
+    assert (
+        out.card is None and out.question and [c.label for c in out.choices] == ["✅ Ha", "❌ Yo'q"]
+    )
+    yes = await _run(sm, w.staff, d.with_choice(call, out.choices[0].patch))
+    assert yes.card is not None
+    no = await _run(sm, w.staff, d.with_choice(call, out.choices[1].patch))
+    assert no.card is None and no.question is None
+
+
+async def test_whole_word_and_phone_tail_are_accepted_silently(sm: SM) -> None:
+    w = await _world(sm)
+    await _debt(sm, w, w.umida, [ItemInput(w.cats["ko'ylak"].id, 1, 300_000)])
+    for q in ("Umida", "умида", "0501"):  # name, Cyrillic, phone tail (+998900000501)
+        out = await _run(sm, w.staff, _pay(customer_query=q, amount_text="100 ming"))
+        assert out.card is not None, q
+
+
+async def test_unit_less_amount_is_flagged_on_the_card(sm: SM) -> None:
+    """BR-076: "350" → 350 000, and the staff member is told above the card."""
+    w = await _world(sm)
+    await _debt(sm, w, w.umida, [ItemInput(w.cats["ko'ylak"].id, 1, 600_000)])
+    out = await _run(sm, w.staff, _pay(customer_query="Umida", amount_text="350"))
+    assert (
+        out.card is not None
+        and out.text
+        and out.text.startswith("⚠️ «350» ni 350 000 so'm deb tushundim")
+    )
+    debt = await _run(sm, w.staff, ToolCall("add_debt", {"customer_query": "Umida", "due_text": "muddatsiz",
+        "items": [{"item": "shim", "unit_price_text": "450"}]}))  # fmt: skip
+    assert debt.text and "450 000 so'm" in debt.text and debt.text.startswith("⚠️")
+
+
+async def test_write_off_all_with_amount_asks(sm: SM) -> None:
+    w = await _world(sm)
+    await _debt(sm, w, w.umida, [ItemInput(w.cats["ko'ylak"].id, 1, 300_000)])
+    call = ToolCall("write_off", {"customer_query": "Umida", "all": True, "amount_text": "50 ming"})
+    out = await _run(sm, w.staff, call)
+    assert out.card is None and len(out.choices) == 2
+    only = await _run(sm, w.staff, d.with_choice(call, {"amount_only": True}))
+    assert only.card is not None and (await _payload(sm, only.card.key))["amount"] == 50_000
+    whole = await _run(sm, w.staff, d.with_choice(call, {"all_only": True}))
+    assert whole.card is not None and (await _payload(sm, whole.card.key))["amount"] == 300_000
+
+
+async def test_new_customer_card_stops_the_following_requests(sm: SM) -> None:
+    """ "Yangi mijoz Laylo, unga qarz": the debt must wait until the customer is confirmed."""
+    w = await _world(sm)
+    calls = [
+        ToolCall("create_customer", {"name": "Laylo", "form": "opa"}),
+        ToolCall(
+            "add_debt",
+            {"customer_query": "Laylo", "items": [{"item": "shim", "unit_price_text": "200 ming"}]},
+        ),
+    ]
+    async with uow(sm, actor_id=w.staff.id) as s:
+        outcomes = await d.run_calls(s, w.staff, calls, CTX)
+    assert len(outcomes) == 1 and outcomes[0].card is not None
+
+
+async def test_cancel_last_prefers_my_own_record_and_shows_who(sm: SM) -> None:
+    w = await _world(sm)
+    async with uow(sm, actor_kind="system") as s:
+        s.add(User(telegram_id=9, role="staff", tg_first_name="Boshqa"))
+    async with read_session(sm) as s:
+        other = (await s.scalars(select(User).where(User.telegram_id == 9))).one()
+    await _debt(sm, w, w.umida, [ItemInput(w.cats["ko'ylak"].id, 1, 100_000)])  # mine
+    async with uow(sm, actor_id=other.id) as s:  # someone else's, newer
+        await ledger.create_debts(
+            s,
+            other,
+            customer_id=w.jasur,
+            items=[ItemInput(w.cats["shim"].id, 1, 777_000)],
+            due_date=None,
+            today=TODAY,
+        )
+    out = await _run(sm, w.staff, ToolCall("cancel_last_entry", {}))
+    assert (
+        out.card is not None and "Umida" in (out.text or "") and "777 000" not in (out.text or "")
+    )
+    assert "Yozgan:" in (out.text or "")
+    named = await _run(sm, w.staff, ToolCall("cancel_last_entry", {"customer_query": "Jasur"}))
+    assert named.card is not None and "777 000 so'm" in (named.text or "")
+
+
+async def test_context_older_than_15_minutes_is_forgotten() -> None:
+    import time
+
+    from bot.handlers.staff.agent import _fresh_last
+
+    assert _fresh_last({"ai_last_customer": 5, "ai_at": time.time()}) == 5
+    assert _fresh_last({"ai_last_customer": 5, "ai_at": time.time() - 16 * 60}) is None
+    assert _fresh_last({}) is None
+
+
+async def test_short_words_do_not_hit_products(sm: SM) -> None:
+    async with read_session(sm) as s:
+        for word in ("ko", "kof", "shi", "sum", "ship"):
+            assert await d.resolve_category(s, word) is None, word

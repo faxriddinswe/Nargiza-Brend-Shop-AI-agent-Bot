@@ -638,6 +638,7 @@ AI_DOWN: Final = (
 AI_VOICE_TOO_LONG: Final = (
     "Ovozli xabar juda uzun. Iltimos, qisqaroq qilib yuboring (1,5 daqiqagacha)."
 )
+AI_SLOW_DOWN: Final = "Biroz sekinroq, iltimos 🙏 Bir daqiqadan keyin yana yuboring."
 AI_NOT_UNDERSTOOD: Final = "Tushunmadim. Yana bir aytib bering, iltimos."
 AI_LISTENING: Final = "🎧 Tinglayapman…"
 AI_CHOICE_EXPIRED: Final = "Bu savol eskirdi. Iltimos, qaytadan ayting."
@@ -705,3 +706,34 @@ def ai_overdue(rows: list[tuple[str, str, int, int]]) -> str:
 
 def ai_down_alert(error: str) -> str:
     return f"⚠️ AI vaqtincha ishlamayapti ({error}). Xodimlar tugmalar bilan ishlayapti."
+
+
+BTN_YES: Final = "✅ Ha"
+BTN_NO: Final = "❌ Yo'q"
+AI_ABORTED: Final = "Xo'p. Mijozning to'liq ismini ayting yoki 🔍 Qidirish tugmasidan foydalaning."
+
+
+def ai_customer_confirm(who: str) -> str:
+    return f"Shu odamni nazarda tutdingizmi: {who}?"
+
+
+def ai_assumed_thousands(raw: str, value: int) -> str:
+    return (
+        f"⚠️ «{raw}» ni {money(value)} deb tushundim. Noto'g'ri bo'lsa, ❌ Bekor qilish ni bosing."
+    )
+
+
+def ai_all_or_amount(spoken: str) -> str:
+    return f"Hammasini kechamizmi yoki faqat {spoken}ni?"
+
+
+def ai_skipped(n: int) -> str:
+    return f"ℹ️ Qolgan {n} ta ishni hali bajarmadim — avval yuqoridagini tasdiqlang yoki javob bering, keyin qayta ayting."
+
+
+def cancel_card_by(kind: str, name: str, amount: int, when: date, by: str, at: str) -> str:
+    return (
+        f"↩️ Bekor qilamizmi?\n\n{KIND_NAMES[kind]}: {name}\nSumma: {money(amount)}\n"
+        f"Sana: {format_date(when)}, soat {at}\nYozgan: {by}\n\n"
+        "Yozuv o'chmaydi — «bekor qilingan» deb tarixda qoladi."
+    )

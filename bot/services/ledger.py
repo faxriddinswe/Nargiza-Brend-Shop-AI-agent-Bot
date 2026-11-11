@@ -441,7 +441,9 @@ class Entry:
     created_by: int | None
 
 
-async def recent_entries(session: AsyncSession, *, limit: int = 10) -> list[Entry]:
+async def recent_entries(
+    session: AsyncSession, *, limit: int = 10, customer_id: int | None = None
+) -> list[Entry]:
     """Latest active ledger records (for "Oxirgi yozuvni bekor qilish")."""
     debts_q = (
         select(Debt.id, Debt.customer_id, Customer.name, Debt.section_id, Debt.total_amount, Debt.created_at, Debt.created_by)
@@ -450,6 +452,8 @@ async def recent_entries(session: AsyncSession, *, limit: int = 10) -> list[Entr
         .order_by(Debt.created_at.desc())
         .limit(limit)
     )  # fmt: skip
+    if customer_id is not None:
+        debts_q = debts_q.where(Debt.customer_id == customer_id)
     pay_q = (
         select(Payment.id, Payment.customer_id, Customer.name, Payment.section_id, Payment.amount, Payment.created_at, Payment.created_by, Payment.kind)
         .join(Customer, Customer.id == Payment.customer_id)
@@ -457,6 +461,8 @@ async def recent_entries(session: AsyncSession, *, limit: int = 10) -> list[Entr
         .order_by(Payment.created_at.desc())
         .limit(limit)
     )  # fmt: skip
+    if customer_id is not None:
+        pay_q = pay_q.where(Payment.customer_id == customer_id)
     entries = [Entry("debt", *row) for row in (await session.execute(debts_q)).all()]
     entries += [
         Entry(kind, pid, cid, name, sid, amt, at, by)
