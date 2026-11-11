@@ -54,6 +54,9 @@ select = [
     "DTZ",           # timezone'siz datetime taqiqlanadi
     "SIM", "RUF",
 ]
+# RUF001-003: kirill harflari va o'zbek apostroflari (ʻ ʼ) ataylab ishlatiladi
+# E501: kod uzunligini ruff format boshqaradi; uzun o'zbekcha izohlar ruxsat
+ignore = ["RUF001", "RUF002", "RUF003", "E501"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S105", "S106"]  # testlarda assert va soxta parollar ruxsat

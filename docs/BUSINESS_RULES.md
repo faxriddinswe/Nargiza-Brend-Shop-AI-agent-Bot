@@ -21,6 +21,7 @@
 - **BR-011** Botga kirgan har bir kishi avtomatik `customer` bo'ladi.
 - **BR-012** `staff` rolini faqat admin beradi va oladi. Bot hech qachon o'zi xodim qilmaydi.
   ✅ Javob: admin bot ichida xodimni **telefon raqami** bilan qo'shadi (ism, murojaat, bo'lim egaligi bilan). O'sha odam /start bosib raqamini ulashganda (BR-152 tekshiruvi bilan) avtomatik `staff` bo'ladi. Allaqachon ro'yxatdan o'tgan bo'lsa — darhol.
+- **BR-012a** ✅ Xodim raqami boshqa (yangi) Telegram akkauntdan ulashilsa — avtomatik o'tmaydi: adminga [Tasdiqlash] [Rad etish] so'rovi boradi; tasdiqlanmaguncha u `customer`. Bloklangan xodim raqami qayta bog'lanmaydi.
 - **BR-013** Birinchi admin `.env` dagi `ADMIN_PHONES` (telefon) orqali aniqlanadi: shu raqam egasi raqamini ulashganda `admin` bo'ladi. `ADMIN_TELEGRAM_IDS` ham qo'llab-quvvatlanadi (zaxira yo'l).
 - **BR-014** Admin barcha foydalanuvchilarni, ularning sonini, telefonlarini va barcha ma'lumotni ko'radi va o'zgartiradi. Admin xodimning barcha imkoniyatlariga ega. Faqat adminga: xodim tayinlash/olish, xodimni bloklash, bot sozlamalari, o'chirilgan yozuvlarni qaytarish.
 - **BR-015** Bloklangan xodim (masalan telefoni yo'qolsa) darhol hech qanday amal bajara olmaydi — 💡 keyingi xabaridan boshlab.
@@ -64,7 +65,7 @@
 - **BR-044** Qidiruv: kirill↔lotin ("Умида" = "Umida"), noaniq moslik (fuzzy), telefonning bir qismi bo'yicha.
 - **BR-045** Bir nechta mos mijoz bo'lsa — ro'yxat: ism + izoh, to'liq telefon (faqat xodimlarga), joriy qarz (bo'lim bilan), oxirgi xarid va sanasi. Tanlash: tugma [1][2][3] yoki matn/ovoz ("birinchisi", "Shahlo opaning qizi", "45 67 dagisi"). 5 tadan ko'p bo'lsa — [Yana ko'rsatish] yoki telefon oxirini so'rash. [➕ Yangi mijoz] doim bor.
 - **BR-046** Mijozni xodim o'chira oladi. Qarzi bo'lsa — avval ogohlantiradi va qarzni yopishni taklif qiladi. O'chirish = soft delete; admin qaytara oladi. ❓ Q-8: qarzi bor mijozni qarz yopilmasdan o'chirishga ruxsatmi?
-- **BR-047** Mijoz botda ro'yxatdan o'tsa va telefoni mavjud mijoz yozuviga mos kelsa — avtomatik bog'lanadi va qarzlarini ko'radi.
+- **BR-047** ✅ Ro'yxatdan o'tgan har bir odam mijoz bo'ladi. Telefoni mavjud (o'chirilmagan) mijoz yozuviga mos kelsa — o'sha yozuvga bog'lanadi va qarzlarini ko'radi; mos kelmasa — yangi mijoz yozuvi yaratiladi. "💰 Mening qarzim" qarz bo'lmasa: "Sizda qarz yo'q". Bog'lanishda xodimlarga alohida xabar yuborilmaydi (yangi mijozlar soni 20:00 hisobotida).
 
 ## 5. Qarz daftari
 
@@ -107,6 +108,7 @@
 - **BR-081** Kartada: eski tovar, yangi tovar, farq, qarz/savdo "oldin → keyin".
 - **BR-082** Qarzga olingan tovar almashtirilsa — qarz farqqa qarab o'zgaradi (💡 tuzatish yozuvi bilan; asl qarz o'zgartirilmaydi. Tuzatishlar jadvali — 1-bosqichda architect bilan).
 - **BR-083** Naqd savdo almashtirilsa — farqni mijoz to'laydimi yoki unga qaytariladimi — bot so'raydi.
+- **BR-076** ✅ Birliksiz kichik son (< 1000, masalan "350") — ming deb olinadi (350 000 so'm), kartada aniq ko'rinadi. 1000–9999 oralig'idagi birliksiz son ("1500") — bot so'raydi.
 - **BR-084** Faqat qaytarish: qarzga olingan bo'lsa — qarzdan ayiriladi; naqd bo'lsa — savdo bekor qilinadi (qaytarish yozuvi). Ombor ko'payadi.
   ❓ Q-11: qarzning bir qismi allaqachon to'langan bo'lsa va tovar qaytarilsa (masalan qarz 300 000, 200 000 to'langan, 300 000 lik tovar qaytdi) — mijozga 100 000 naqd qaytariladimi?
 - **BR-085** Bo'limlararo almashtirish (ko'ylak → ichki kiyim) — summa bir bo'limdan chiqib boshqasiga kiradi; tegishli bo'lim egasiga xabar (BR-026).
@@ -128,7 +130,7 @@
 - **BR-100** Bazaga yozadigan har qanday amal avval tasdiqlash kartasini ko'rsatadi: [✅ Tasdiqlash] [✏️ Tuzatish] [❌ Bekor qilish].
 - **BR-101** Savollar (o'qish) tasdiqsiz, darhol.
 - **BR-102** Idempotentlik: tugma ikki marta bosilsa ham yozuv bir marta yoziladi.
-- **BR-103** ❓ Q-15: Tasdiqlash kartasi qancha vaqt amal qiladi (masalan 30 daqiqa, keyin "eskirdi")?
+- **BR-103** ✅ Tasdiqlash kartasi 30 daqiqa amal qiladi (sozlamada o'zgartiriladi). Keyin: "Bu karta eskirdi, qaytadan ayting". Kartani faqat uni olgan xodim tasdiqlay oladi.
 - **BR-104** "Oxirgi yozuvni bekor qil" — tasdiq bilan; yozuv o'chirilmaydi, `cancelled` holatiga o'tadi va tarixda qoladi. ❓ Q-16: xodim faqat o'zi yozganini bekor qila oladimi? Vaqt chegarasi bormi?
 - **BR-105** Har bir biznes amal — bitta tranzaksiya: hammasi yoziladi yoki hech narsa.
 - **BR-106** Har bir yozish, o'zgartirish, o'chirish audit log'ga tushadi (kim, qachon, eski, yangi).
@@ -231,7 +233,7 @@
 | Q-12 | Qaytarishga muddat cheklovi bormi? | BR-087 |
 | Q-13 | Har bir tur uchun "kam qoldi" chegarasi | BR-094 |
 | Q-14 | Boshlang'ich ombor qoldig'i (tur bo'yicha) | BR-095 |
-| Q-15 | Tasdiqlash kartasi necha daqiqada eskiradi? | BR-103 |
+| Q-15 | **✅ 30 daqiqa** — Tasdiqlash kartasi necha daqiqada eskiradi? | BR-103 |
 | Q-16 | "Oxirgi yozuvni bekor qil" — faqat o'zinikimi, vaqt chegarasi bormi? | BR-104 |
 | Q-17 | "Bu hafta" dushanbadan boshlanadimi? | BR-123 |
 | Q-18 | "Mart" — joriy yilning o'tgan marti deb olinsinmi? | BR-123 |
