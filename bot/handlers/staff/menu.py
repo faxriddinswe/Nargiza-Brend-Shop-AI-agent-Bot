@@ -16,13 +16,6 @@ from bot.utils.dates import Period, today_tashkent
 router = Router(name="staff")
 router.message.filter(RoleFilter(Role.STAFF, Role.ADMIN))
 
-_SOON = {t.BTN_STAFF_BROADCAST}
-
-
-@router.message(F.text.in_(_SOON))
-async def coming_soon(message: Message) -> None:
-    await message.answer(t.COMING_SOON)
-
 
 @router.message(F.text == t.BTN_STAFF_SALE)
 async def sale_help(message: Message) -> None:

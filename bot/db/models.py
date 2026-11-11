@@ -597,3 +597,33 @@ class ReturnItem(Base):
     category_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("categories.id"))
     quantity: Mapped[int] = mapped_column(Integer)
     value: Mapped[int] = mapped_column(BigInteger)
+
+
+class ReminderLog(Base):
+    """One row per reminder actually sent — `UNIQUE(debt_id, kind, seq)` makes duplicates impossible (BR-166)."""
+
+    __tablename__ = "reminders_log"
+    __table_args__ = (UniqueConstraint("debt_id", "kind", "seq", name="uq_reminders_log_once"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    debt_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("debts.id"))
+    customer_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("customers.id"))
+    kind: Mapped[str] = mapped_column(Text)  # before | due | overdue
+    seq: Mapped[int] = mapped_column(Integer, server_default="0")
+    sent_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class Broadcast(Base):
+    """History of announcements (never the text — only who sent what kind to how many)."""
+
+    __tablename__ = "broadcasts"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    created_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    segment: Mapped[str] = mapped_column(Text)
+    has_photo: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    recipients: Mapped[int] = mapped_column(Integer)
+    delivered: Mapped[int] = mapped_column(Integer, server_default="0")
+    blocked: Mapped[int] = mapped_column(Integer, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())

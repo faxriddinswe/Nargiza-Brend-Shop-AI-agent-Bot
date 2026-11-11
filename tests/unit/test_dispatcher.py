@@ -20,6 +20,7 @@ def test_dispatcher_builds_with_all_routers() -> None:
         "admin",
         "confirm",
         "staff_ledger",
+        "staff_broadcast",
         "staff_agent",
         "start",
         "staff",

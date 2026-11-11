@@ -108,7 +108,7 @@ async def lock_customer(session: AsyncSession, customer_id: int) -> Customer:
     return c
 
 
-def _paid_subquery() -> Any:
+def paid_subquery() -> Any:
     return (
         select(
             PaymentAllocation.debt_id,
@@ -144,7 +144,7 @@ async def debts_with_remaining(
     only_open: bool = True,
     lock: bool = False,
 ) -> list[DebtView]:
-    paid = _paid_subquery()
+    paid = paid_subquery()
     q = (
         select(
             Debt.id,
@@ -619,7 +619,7 @@ class DebtorRow:
 
 async def debtors(session: AsyncSession, *, section_id: int | None = None) -> list[DebtorRow]:
     """Everyone who owes, biggest first. Deleted customers stay (their debt is still owed, Q-33)."""
-    paid = _paid_subquery()
+    paid = paid_subquery()
     remaining = Debt.total_amount - func.coalesce(paid.c.paid, 0)
     q = (
         select(
@@ -656,7 +656,7 @@ class OverdueRow:
 
 
 async def overdue(session: AsyncSession, today: date) -> list[OverdueRow]:
-    paid = _paid_subquery()
+    paid = paid_subquery()
     remaining = Debt.total_amount - func.coalesce(paid.c.paid, 0)
     q = (
         select(

@@ -281,3 +281,9 @@
 | Q-33 | **✅ yes, it stays** — Does a deleted customer's debt remain in the "total debt" report? | BR-046, BR-055 |
 | Q-34 | **✅ proposal accepted** — If a payment is cancelled or edited, how is the allocation recalculated? (Proposal: the old payment becomes `cancelled`, the new payment is allocated afresh) | BR-104 |
 | Q-35 | In the 08:00 list — all customers without a phone, or only debtors without a phone? | BR-042 |
+
+
+## Stage 7 owner decisions (2026-11-11)
+- **Q-20 ✅** Customer reminders at 10:00 every day (no day off). **Q-21 ✅** Both sections → one message, sections on separate lines.
+- **Q-22 ✅** Announcements to debtors / overdue debtors are NOT promotional (sent even if promotions are off). **Q-23 ✅** 20:00 report every day; weekly task Monday 09:00 (admin debtors Excel — planned with Stage 9), monthly on the 1st at 09:00.
+- Q-35 applied as: the 08:00 list shows only debtors without a phone.

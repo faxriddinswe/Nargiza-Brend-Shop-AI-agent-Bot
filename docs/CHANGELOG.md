@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.6.0] — Stage 7 (reminders and announcements) — 2026-11-11
+- Customer debt reminders at 10:00 (2 days before, due day, every 3 days up to 5 times), one message per customer; `reminders_log` prevents duplicates.
+- 08:00 staff call list (overdue, no phone, no due date).
+- 📢 E'lon: text/photo, segments (everyone / debtors / overdue / one person), preview count, rate-limited queue (~20/s; Telegram allows ~30/s), result summary; history in `broadcasts`.
+- Migration 0009.
+
 ## [0.5.0] — Stage 6 (reports, Excel, scheduled reports) — 2026-11-11
 - Reports per period and section (sales, cash, credit, write-offs, returns, product types), period comparison, payments list.
 - Excel export (sales, debtors, stock) with formula-injection protection; AI tools `get_sales_report`, `compare_periods`, `list_payments`, `export_excel`.

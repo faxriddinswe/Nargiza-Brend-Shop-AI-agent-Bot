@@ -1063,3 +1063,96 @@ def monthly_report_extra() -> str:
 
 
 REPORT_HINT: Final = "\n\n💡 Boshqa davr uchun yozing yoki ayting: «o'tgan oy hisoboti», «bu oy o'tgan oydan ko'pmi», «Excelga ber»."
+
+
+# ============================================================ Stage 7: reminders, call list, broadcasts
+def reminder_text(name: str, form: str, lines: list[tuple[str, int, date, str]]) -> str:
+    """One polite message per customer; sections on separate lines (Q-21). Never mentions other people."""
+    hello = f"Assalomu alaykum, {name} {form}! 🌸"
+    overdue = [x for x in lines if x[3] == "overdue"]
+    if overdue:
+        intro = "Qarz muddati o'tib ketganini muloyimlik bilan eslatamiz:"
+    elif any(x[3] == "due" for x in lines):
+        intro = "Bugun qarz to'lash kuni ekanini eslatamiz:"
+    else:
+        intro = "Qarz muddati yaqinlashayotganini eslatamiz:"
+    body = [
+        f"• {SECTION_NAMES[code]}: {money(rem)} — muddat {format_date(due)}"
+        for code, rem, due, _ in lines
+    ]
+    return "\n".join(
+        [
+            hello,
+            "",
+            intro,
+            *body,
+            "",
+            "Qulay vaqtda do'konimizga kirib to'lov qilsangiz bo'ladi. Rahmat! 🙏",
+        ]
+    )
+
+
+def call_list_text(cl: object, day: date) -> str:
+    from bot.services.reminders import CallList
+
+    assert isinstance(cl, CallList)  # noqa: S101
+    out = [f"☎️ Qo'ng'iroq ro'yxati — {format_date(day)}"]
+
+    def who(i: object) -> str:
+        from bot.services.reminders import CallItem
+
+        assert isinstance(i, CallItem)  # noqa: S101
+        phone = format_phone(i.phone) if i.phone else "⚠️ telefon kerak"
+        return f"{i.name} {i.form} — {SECTION_NAMES[i.section]}: {money(i.amount)} · {phone}"
+
+    if cl.overdue:
+        out += ["", "⏰ Muddati o'tganlar:"]
+        out += [f"• {who(i)} ({i.days_overdue} kun)" for i in cl.overdue[:25]]
+        if len(cl.overdue) > 25:
+            out.append(more_debts(len(cl.overdue) - 25))
+    if cl.no_phone:
+        out += ["", "⚠️ Telefon raqami yo'q qarzdorlar:"]
+        out += [
+            f"• {i.name} {i.form} — {SECTION_NAMES[i.section]}: {money(i.amount)}"
+            for i in cl.no_phone[:15]
+        ]
+    if cl.no_due:
+        out += ["", "📅 Muddati belgilanmagan qarzlar:"]
+        out += [f"• {who(i)}" for i in cl.no_due[:15]]
+        out.append("Muddat qo'yish uchun mijoz kartasidan foydalaning.")
+    return "\n".join(out)
+
+
+BC_ASK_CONTENT: Final = "📢 E'lon matnini yozing yoki rasm yuboring (rasmga izoh yozishingiz mumkin).\nBekor qilish: /start"
+BC_ASK_SEGMENT: Final = "Kimlarga yuboramiz?"
+BC_SEG_ALL: Final = "👥 Hammaga"
+BC_SEG_DEBTORS: Final = "💰 Qarzdorlarga"
+BC_SEG_OVERDUE: Final = "⏰ Muddati o'tganlarga"
+BC_SEG_ONE: Final = "👤 Bitta odamga"
+BC_ASK_ONE: Final = "Kimga? Ismini yoki telefon raqamini yozing 👇"
+BC_NOBODY: Final = "Bu guruhda hozircha hech kim yo'q."
+BC_TOO_LONG: Final = "Matn juda uzun (1000 belgigacha bo'lsin)."
+BC_SEND: Final = "✅ Yuborish"
+BC_CANCEL: Final = "❌ Bekor"
+BC_CANCELLED: Final = "E'lon bekor qilindi."
+BC_EXPIRED: Final = "Bu e'lon eskirgan, qaytadan boshlang."
+BC_TIP: Final = "💡 Tavsiya: haftasiga 1–2 ta reklama yetarli."
+
+
+def bc_preview(
+    segment: str, count: int, text: str | None, has_photo: bool, one_name: str | None = None
+) -> str:
+    target = {
+        "all": "hammaga (reklamani o'chirganlardan tashqari)",
+        "debtors": "qarzdorlarga",
+        "overdue": "muddati o'tgan qarzdorlarga",
+        "one": f"{one_name}ga",
+    }[segment]
+    photo = "🖼 rasm bilan\n" if has_photo else ""
+    return f"📢 E'lon — {target}\n{photo}\n{text or ''}\n\n👥 {count} kishiga boradi.\n{BC_TIP if segment == 'all' else ''}".strip()
+
+
+def bc_result(delivered: int, blocked: int, failed: int) -> str:
+    extra = f", {blocked} tasi botni bloklagan" if blocked else ""
+    miss = f", {failed} tasiga yetmadi" if failed else ""
+    return f"✅ {delivered} tasiga yetdi{extra}{miss}."

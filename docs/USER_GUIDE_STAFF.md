@@ -124,3 +124,22 @@ Ovozli xabar 1,5 daqiqagacha bo'lsin. Bot «hozir tinglay olmayapman» desa, pas
 - Har kuni **20:00** da hisobot o'zi keladi — kassadagi pulni shu bilan solishtiring. Har oyning 1-kuni o'tgan oy hisoboti keladi.
 - Davr aytilmasa, bot so'raydi (hisobot uchun «bugun» deb olinadi).
 - Excel fayl faqat sizga yuboriladi; uni boshqalarga uzatmang (telefon raqamlari bor).
+
+
+## 📢 E'lon yuborish
+
+1. **📢 E'lon** tugmasi → matn yozing yoki rasm yuboring (rasmga izoh yozish mumkin).
+2. Kimlarga: **Hammaga** / **Qarzdorlarga** / **Muddati o'tganlarga** / **Bitta odamga**.
+3. Bot «87 kishiga boradi» deb ko'rsatadi → **✅ Yuborish** yoki **❌ Bekor**.
+4. Natija: «82 tasiga yetdi, 5 tasi botni bloklagan».
+
+- **Hammaga** — faqat reklamani o'chirmagan mijozlarga boradi. Qarzdorlarga va bitta odamga yuborilgan xabar reklama hisoblanmaydi.
+- E'londa hech qachon kimningdir qarzi ko'rsatilmaydi — shuning uchun matnga summa yozmang.
+- Botni bloklagan yoki /start bosmagan mijozlarga bot yoza olmaydi — ular qo'ng'iroq ro'yxatida chiqadi.
+- Maslahat: haftasiga 1–2 ta reklama yetarli.
+
+## ☎️ Avtomatik eslatmalar
+
+- **Har kuni 08:00** — sizga qo'ng'iroq ro'yxati keladi: muddati o'tganlar (telefon bilan), telefoni yo'q qarzdorlar, muddati belgilanmagan qarzlar.
+- **Har kuni 10:00** — mijozlarga muloyim eslatma ketadi: muddatdan 2 kun oldin, muddat kuni, keyin har 3 kunda (ko'pi bilan 5 marta). Ikki bo'limda qarzi bo'lsa — bitta xabar. Muddati yo'q qarzga eslatma bormaydi.
+- Qarz to'langach eslatma to'xtaydi. Bir eslatma ikki marta ketmaydi.

@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from bot.config import Settings
 from bot.db.models import Role, User
 from bot.db.session import read_session, uow
-from bot.services import reports
+from bot.services import reminders, reports
 from bot.services import settings as settings_svc
 from bot.services import users as users_svc
 from bot.texts import uz_latn as t
@@ -125,6 +125,45 @@ async def monthly_report(bot: Sender, sm: SM, *, today: date | None = None) -> i
     return sent
 
 
+async def send_reminders(bot: Sender, sm: SM, *, today: date | None = None) -> int:
+    """10:00: polite debt reminders (BR-161…163). Idempotent through `reminders_log`."""
+    day = today or today_tashkent()
+    async with read_session(sm) as s:
+        due = await reminders.due_reminders(s, day)
+    sent = 0
+    for r in due:
+        try:
+            await bot.send_message(r.chat_id, t.reminder_text(r.name, r.form, r.lines))
+        except TelegramForbiddenError:
+            async with uow(sm, actor_kind="system") as s:
+                await users_svc.mark_bot_blocked(s, r.chat_id)  # → call list from now on (BR-165)
+            continue
+        except Exception as e:
+            log.warning("reminder_send_failed", error=type(e).__name__)
+            continue
+        async with uow(sm, actor_kind="system") as s:
+            await reminders.mark_sent(s, r)
+        sent += 1
+        await asyncio.sleep(SEND_PAUSE)
+    log.info("reminders_sent", count=sent)
+    return sent
+
+
+async def morning_call_list(bot: Sender, sm: SM, *, today: date | None = None) -> int:
+    """08:00: who to phone today (BR-180). Skipped when there is nothing to do."""
+    day = today or today_tashkent()
+    if not await _claim(sm, "calllist.last_sent", day.isoformat()):
+        return 0
+    async with read_session(sm) as s:
+        cl = await reminders.call_list(s, day)
+    if cl.empty:
+        return 0
+    sent = await _broadcast(bot, sm, t.call_list_text(cl, day))
+    if sent == 0 and await _recipients(sm):
+        await _release(sm, "calllist.last_sent")
+    return sent
+
+
 def setup_scheduler(bot: Sender, sm: SM, settings: Settings) -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler(timezone=settings.tz)
     common = {
@@ -145,6 +184,12 @@ def setup_scheduler(bot: Sender, sm: SM, settings: Settings) -> AsyncIOScheduler
         id="monthly_report",
         args=[bot, sm],
         **common,
+    )
+    scheduler.add_job(
+        send_reminders, "cron", hour=10, minute=0, id="reminders", args=[bot, sm], **common
+    )
+    scheduler.add_job(
+        morning_call_list, "cron", hour=8, minute=0, id="call_list", args=[bot, sm], **common
     )
     return scheduler
 

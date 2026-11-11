@@ -21,6 +21,7 @@ from bot.handlers.admin import panel as admin_panel
 from bot.handlers.common import fallback, start
 from bot.handlers.customer import menu as customer_menu
 from bot.handlers.staff import agent as staff_agent
+from bot.handlers.staff import broadcast as staff_broadcast
 from bot.handlers.staff import confirm as staff_confirm
 from bot.handlers.staff import ledger as staff_ledger
 from bot.handlers.staff import menu as staff_menu
@@ -81,6 +82,7 @@ def build_dispatcher(settings: Settings, engine: AsyncEngine) -> Dispatcher:
         admin_panel.router,
         staff_confirm.router,
         staff_ledger.router,
+        staff_broadcast.router,
         staff_agent.router,
         start.router,
         staff_menu.router,

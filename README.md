@@ -4,7 +4,7 @@ A Telegram bot that replaces the paper debt notebook of a small family-run women
 in a Tashkent bazaar. It keeps the debt ledger, sales and stock, talks to customers, and — in later
 stages — lets the family run the shop by simply **speaking** to it in Uzbek.
 
-> **Status:** Stages 0–6 implemented — debt ledger via buttons plus an AI agent that understands free text and
+> **Status:** Stages 0–7 implemented — debt ledger via buttons plus an AI agent that understands free text and
 > voice messages (needs a Gemini API key). Sales, stock and reports are next. See the [roadmap](#roadmap).
 
 ---
@@ -36,7 +36,9 @@ stages — lets the family run the shop by simply **speaking** to it in Uzbek.
 
 - Reports, period comparison, Excel export, scheduled daily/monthly reports.
 
-**Planned** — reminders and broadcasts, import of the old paper notebook.
+- Automatic debt reminders, 08:00 call list, announcements.
+
+**Planned** — import of the old paper notebook.
 
 ## Data safety
 
@@ -144,8 +146,8 @@ The original requirements (in Uzbek) are in [NARGIZA_BREND_MASTER_PROMPT.md](NAR
 | 4 | Voice messages | ✅ (real-voice evaluation pending) |
 | 5 | Sales, stock, returns and exchanges | ✅ |
 | 6 | Reports and Excel export | ✅ |
-| 7 | Reminders and broadcasts | ⏳ next |
-| 8 | Import of the old paper notebook | |
+| 7 | Reminders and broadcasts | ✅ |
+| 8 | Import of the old paper notebook | ⏳ next |
 | 9 | Integrity checks, monitoring | |
 | 10 | Deployment (staging → production) | |
 | 11 | Family onboarding, 2-week parallel run with the notebook | |
