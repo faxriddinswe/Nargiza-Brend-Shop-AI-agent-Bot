@@ -7,6 +7,8 @@ router'lar → long polling (qaror: docs/ARCHITECTURE.md).
 from __future__ import annotations
 
 import asyncio
+import pathlib
+import traceback
 
 import structlog
 from aiogram import Bot, Dispatcher
@@ -19,6 +21,8 @@ from bot.db.session import make_engine, make_sessionmaker, uow
 from bot.handlers.admin import panel as admin_panel
 from bot.handlers.common import fallback, start
 from bot.handlers.customer import menu as customer_menu
+from bot.handlers.staff import confirm as staff_confirm
+from bot.handlers.staff import ledger as staff_ledger
 from bot.handlers.staff import menu as staff_menu
 from bot.logging_setup import setup_logging
 from bot.middlewares.auth import UserMiddleware
@@ -40,9 +44,11 @@ async def check_database(url: URL) -> None:
 
 async def on_error(event: ErrorEvent) -> bool:
     """Kutilmagan xato: log + foydalanuvchiga muloyim xabar. Shaxsiy ma'lumot log'ga yozilmaydi."""
-    log.error(
-        "unhandled_error", error_type=type(event.exception).__name__, exc_info=event.exception
-    )
+    # Exception *messages* can contain personal data (Postgres DETAIL: Key (phone)=(...)), so we log
+    # only the type and the code location, never the message.
+    tb = traceback.extract_tb(event.exception.__traceback__)
+    frames = [f"{pathlib.PurePath(f.filename).name}:{f.lineno}:{f.name}" for f in tb[-6:]]
+    log.error("unhandled_error", error_type=type(event.exception).__name__, frames=frames)
     msg: Message | None = event.update.message or (
         event.update.callback_query.message  # type: ignore[assignment]
         if event.update.callback_query
@@ -68,7 +74,13 @@ def build_dispatcher(settings: Settings, engine: AsyncEngine) -> Dispatcher:
 
     # Tartib muhim: admin → start (FSM) → xodim → mijoz
     dp.include_routers(
-        admin_panel.router, start.router, staff_menu.router, customer_menu.router, fallback.router
+        admin_panel.router,
+        staff_confirm.router,
+        staff_ledger.router,
+        start.router,
+        staff_menu.router,
+        customer_menu.router,
+        fallback.router,
     )
     return dp
 

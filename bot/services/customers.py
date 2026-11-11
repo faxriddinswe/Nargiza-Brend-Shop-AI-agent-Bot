@@ -101,6 +101,12 @@ async def get(
     return c
 
 
+async def find_by_phone(session: AsyncSession, raw_phone: str) -> Customer | None:
+    """Active customer with exactly this phone (BR-041)."""
+    owner = await _phone_owner(session, normalize_phone(raw_phone))
+    return await session.get(Customer, owner) if owner is not None else None
+
+
 async def update(
     session: AsyncSession,
     actor: User,

@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Any
 
 import structlog
-from aiogram import Bot, F, Router
+from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -25,7 +25,6 @@ from bot.services import settings as settings_svc
 from bot.services import staff as staff_svc
 from bot.services import users as users_svc
 from bot.texts import uz_latn as t
-from bot.utils.guards import required
 from bot.utils.phone import InvalidPhoneError, format_phone, normalize_phone
 
 log = structlog.get_logger(__name__)
@@ -177,56 +176,7 @@ async def staff_action(cb: CallbackQuery, callback_data: kb.AdminCb, user: User,
 
 
 # ------------------------------------------------------------------ kartani tasdiqlash (idempotent)
-@router.callback_query(kb.PendingCb.filter())
-async def on_pending(
-    cb: CallbackQuery, callback_data: kb.PendingCb, user: User, sm: SM, bot: Bot
-) -> None:
-    msg = cb.message if isinstance(cb.message, Message) else None
-    if not callback_data.ok:
-        async with uow(sm, actor_id=user.id) as s:
-            await pending.cancel(s, callback_data.key, user_id=user.id)
-        await cb.answer()
-        if msg:
-            await msg.edit_text(t.CANCELLED)
-        return
-
-    notify: list[tuple[int, str]] = []
-    try:
-        async with uow(sm, actor_id=user.id) as s:
-            actor = required(await s.get(User, user.id), "user")
-            pa = await pending.claim(s, callback_data.key, user_id=user.id)
-            if isinstance(pa, pending.AlreadyDone):
-                await cb.answer(t.CARD_ALREADY_DONE)
-                return
-            text, notify = await _execute(s, actor, pa.action, pa.payload)
-            pending.complete(pa, {"text": text})
-    except pending.PendingExpiredError:
-        await cb.answer(t.CARD_EXPIRED, show_alert=True)
-        return
-    except pending.PendingForbiddenError:
-        await cb.answer(t.CARD_NOT_YOURS, show_alert=True)
-        return
-    except pending.PendingError:
-        await cb.answer(t.CANCELLED)
-        return
-    except staff_svc.StaffExistsError:
-        await cb.answer(t.STAFF_EXISTS, show_alert=True)
-        return
-    except staff_svc.StaffError:
-        log.exception("staff_action_failed")
-        await cb.answer(t.STAFF_NOT_LINKED, show_alert=True)
-        return
-    await cb.answer()
-    if msg:
-        await msg.edit_text(text)
-    for chat_id, note in notify:
-        try:
-            await bot.send_message(chat_id, note)
-        except Exception:
-            log.exception("notify_failed")
-
-
-async def _execute(
+async def execute_admin_action(
     s: AsyncSession, actor: User, action: str, payload: dict[str, Any]
 ) -> tuple[str, list[tuple[int, str]]]:
     """Tasdiqlangan admin amalini bajaradi. Qaytaradi: (javob matni, [(chat_id, xabar)])."""

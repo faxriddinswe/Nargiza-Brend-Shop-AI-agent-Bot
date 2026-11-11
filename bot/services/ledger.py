@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from typing import Any
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import BigInteger, and_, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.db.models import (
@@ -32,6 +32,9 @@ from bot.db.models import (
 )
 from bot.services.allocation import Allocation, OpenDebt, allocate
 from bot.services.customers import CustomerNotFoundError, require_staff
+
+MAX_ITEMS = 30
+MAX_DEBT_TOTAL = 10_000_000_000  # 10 mlrd so'm — anything above is certainly a typo
 
 
 class LedgerError(Exception):
@@ -52,6 +55,10 @@ class PlanChangedError(LedgerError):
 
 class AlreadyCancelledError(LedgerError):
     pass
+
+
+class DueDatePassedError(LedgerError):
+    """The due date on the card is now in the past (card confirmed after midnight)."""
 
 
 class DebtHasPaymentsError(LedgerError):
@@ -98,7 +105,10 @@ async def lock_customer(session: AsyncSession, customer_id: int) -> Customer:
 
 def _paid_subquery() -> Any:
     return (
-        select(PaymentAllocation.debt_id, func.sum(PaymentAllocation.amount).label("paid"))
+        select(
+            PaymentAllocation.debt_id,
+            cast(func.sum(PaymentAllocation.amount), BigInteger).label("paid"),
+        )
         .join(Payment, Payment.id == PaymentAllocation.payment_id)
         .where(Payment.status == LedgerStatus.ACTIVE)
         .group_by(PaymentAllocation.debt_id)
@@ -154,7 +164,11 @@ async def debts_with_remaining(
         if section_id is not None:
             ids_q = ids_q.where(Debt.section_id == section_id)
         await session.execute(ids_q.order_by(Debt.debt_date, Debt.id).with_for_update())
-    views = [DebtView(*row) for row in (await session.execute(q)).all()]
+    # money is ALWAYS int (never Decimal/float): normalise whatever the driver returns
+    views = [
+        DebtView(did, sid, dd, due, int(total), int(paid_amt), note)
+        for did, sid, dd, due, total, paid_amt, note in (await session.execute(q)).all()
+    ]
     return [v for v in views if v.remaining > 0] if only_open else views
 
 
@@ -214,6 +228,10 @@ async def create_debts(
     require_staff(actor)
     if not items:
         raise EmptyDebtError
+    if due_date is not None and due_date < today:
+        raise DueDatePassedError
+    if len(items) > MAX_ITEMS or sum(i.total for i in items) > MAX_DEBT_TOTAL:
+        raise LedgerError("debt too large")
     customer = await lock_customer(session, customer_id)
     if customer.deleted_at is not None:
         raise CustomerNotFoundError(customer_id)
@@ -309,6 +327,7 @@ async def record_payment(
     today: date,
     debt_id: int | None = None,
     expected: Sequence[tuple[int, int]] | None = None,
+    expected_owed: int | None = None,
     note: str | None = None,
 ) -> tuple[Payment, PaymentPlan]:
     """Writes a payment or write-off with its allocations — locked and re-planned.
@@ -316,7 +335,9 @@ async def record_payment(
     `expected` = allocations shown on the card; if the fresh plan differs, PlanChangedError.
     """
     require_staff(actor)
-    await lock_customer(session, customer_id)
+    customer = await lock_customer(session, customer_id)
+    if customer.deleted_at is not None:
+        raise CustomerNotFoundError(customer_id)
     plan = await plan_payment(
         session,
         customer_id=customer_id,
@@ -329,6 +350,10 @@ async def record_payment(
     if expected is not None and [(a.debt_id, a.amount) for a in plan.allocations] != [
         tuple(x) for x in expected
     ]:
+        raise PlanChangedError
+    # Two cards drawn from the same balance (one abandoned, one new) must not both go through:
+    # the section balance has to be exactly what the card showed.
+    if expected_owed is not None and plan.owed_before != expected_owed:
         raise PlanChangedError
     payment = Payment(
         customer_id=customer_id,

@@ -252,3 +252,20 @@ async def role_counts(session: AsyncSession) -> dict[str, int]:
 
     rows = (await session.execute(select(User.role, func.count()).group_by(User.role))).all()
     return {role: count for role, count in rows}
+
+
+async def customer_chat_id(session: AsyncSession, customer: Customer) -> int | None:
+    """Telegram chat of a registered, reachable customer (None = call them instead, BR-165)."""
+    if customer.user_id is None:
+        return None
+    user = await session.get(User, customer.user_id)
+    if user is None or user.is_blocked or user.bot_blocked_at is not None:
+        return None
+    return user.telegram_id
+
+
+async def mark_bot_blocked(session: AsyncSession, telegram_id: int) -> None:
+    """The user blocked the bot (Telegram said Forbidden): stop trying, they go to the call list (BR-165)."""
+    user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+    if user is not None and user.bot_blocked_at is None:
+        user.bot_blocked_at = datetime.now(UTC)

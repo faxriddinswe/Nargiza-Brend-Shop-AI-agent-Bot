@@ -211,3 +211,13 @@ async def section_owner_telegram_ids(session: AsyncSession, section_code: str) -
         )
     )
     return list(rows.all())
+
+
+async def actor_label(session: AsyncSession, user: User) -> str:
+    """How the actor is shown in notifications: staff display name, else Telegram first name."""
+    name = await session.scalar(
+        select(StaffProfile.display_name).where(
+            StaffProfile.user_id == user.id, StaffProfile.deleted_at.is_(None)
+        )
+    )
+    return name or user.tg_first_name or "Admin"

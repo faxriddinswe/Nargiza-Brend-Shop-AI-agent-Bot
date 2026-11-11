@@ -4,8 +4,8 @@ A Telegram bot that replaces the paper debt notebook of a small family-run women
 in a Tashkent bazaar. It keeps the debt ledger, sales and stock, talks to customers, and — in later
 stages — lets the family run the shop by simply **speaking** to it in Uzbek.
 
-> **Status:** Stage 1 (foundation) complete — registration, roles, admin panel, audited database,
-> encrypted backups. The debt ledger and the AI agent are next. See the [roadmap](#roadmap).
+> **Status:** Stage 2 (debt ledger via buttons) implemented — customers, debts, payments, write-offs,
+> cancellations, notifications. The AI agent (text, then voice) is next. See the [roadmap](#roadmap).
 
 ---
 
@@ -133,8 +133,8 @@ The original requirements (in Uzbek) are in [NARGIZA_BREND_MASTER_PROMPT.md](NAR
 |---|---|---|
 | 0 | Skeleton, tooling, CI, business rules | ✅ |
 | 1 | Database, audit, registration, roles, admin panel, encrypted backups | ✅ |
-| 2 | Debt ledger and customers (buttons): debts, FIFO payments, write-offs, cancel | ⏳ next |
-| 3 | AI agent (text) — Gemini tool calling, evaluation set | |
+| 2 | Debt ledger and customers (buttons): debts, FIFO payments, write-offs, cancel | ✅ (pending owner acceptance) |
+| 3 | AI agent (text) — Gemini tool calling, evaluation set | ⏳ next |
 | 4 | Voice messages | |
 | 5 | Sales, stock, returns and exchanges | |
 | 6 | Reports and Excel export | |

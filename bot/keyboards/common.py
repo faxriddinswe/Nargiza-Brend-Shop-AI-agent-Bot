@@ -134,6 +134,7 @@ def admin_panel() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [b(t.BTN_ADMIN_STAFF, "staff"), b(t.BTN_ADMIN_ADD_STAFF, "add_staff")],
             [b(t.BTN_ADMIN_STATS, "stats")],
+            [b(t.BTN_RECENT, "recent"), b(t.BTN_ADMIN_DELETED, "deleted")],
             [b(t.BTN_ADMIN_SHOP_PHOTO, "photo"), b(t.BTN_ADMIN_SHOP_LOCATION, "location")],
         ]
     )

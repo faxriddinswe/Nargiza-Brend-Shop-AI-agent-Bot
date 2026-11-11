@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.0] — Stage 2 (debt ledger and customers, button-driven) — 2026-11-11
+- Database: `debts`, `debt_items`, `payments`, `payment_allocations` with composite foreign keys (section and
+  customer isolation), immutable ledger rows (corrections = cancel + new record), deferred constraint triggers
+  (no overpayment even with concurrent payments, payment = sum of allocations, debt total = sum of items).
+- Services: FIFO / specific-debt allocation, partial and full write-offs, cancellation, balances computed from
+  records, customer search (Cyrillic ↔ Latin, typos, phone tail), soft delete and admin restore.
+- Telegram: find customer, new customer, write a debt (category → quantity → price → note → due date),
+  record a payment or write-off, cancel recent records, delete / restore customers. Every write ends in a
+  confirmation card.
+- Notifications: the customer is told about debts, payments and corrections (if linked); the section owner is
+  told when someone else writes into their section.
+- Customer menu "💰 Mening qarzim" now shows real balances per section.
+- Fix: balances were `Decimal` (Postgres `SUM`) — money is now always `int`.
+- Fix: shop phone corrected to +998 94 511 17 00.
+
 ## [Unreleased]
 - Documentation translated into English.
 - Family member names replaced with pseudonyms for the public repository.

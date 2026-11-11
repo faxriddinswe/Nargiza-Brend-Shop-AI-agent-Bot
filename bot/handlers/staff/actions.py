@@ -1,0 +1,192 @@
+"""Executes confirmed staff actions (after the ✅ on a confirmation card).
+
+Runs inside the caller's transaction (`uow`). Returns the reply text and the notifications to send
+AFTER commit (customer messages BR-054/055a, section-owner messages BR-026/027).
+"""
+
+from __future__ import annotations
+
+from datetime import date
+from typing import Any
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from bot.db.models import AddressForm, Customer, Debt, Payment, PaymentKind, User
+from bot.services import customers as cust
+from bot.services import ledger
+from bot.services import staff as staff_svc
+from bot.services import users as users_svc
+from bot.services.ledger import ItemInput
+from bot.texts import uz_latn as t
+from bot.utils.dates import today_tashkent
+from bot.utils.money import format_amount
+
+Notify = list[tuple[int, str]]
+
+
+class UnknownActionError(Exception):
+    pass
+
+
+def form_word(customer: Customer) -> str:
+    return customer.address_form
+
+
+def display(customer: Customer) -> str:
+    return f"{customer.name} {customer.address_form}"
+
+
+async def _owners_notice(
+    session: AsyncSession, actor: User, section_code: str, text: str
+) -> Notify:
+    """BR-026/027: owners of the section hear about it, unless the actor is one of them."""
+    owners = await staff_svc.section_owner_telegram_ids(session, section_code)
+    if actor.telegram_id in owners:
+        return []
+    return [(chat, text) for chat in owners]
+
+
+async def _customer_notice(session: AsyncSession, customer: Customer, text: str) -> Notify:
+    chat = await users_svc.customer_chat_id(session, customer)
+    return [(chat, text)] if chat else []
+
+
+async def execute(
+    session: AsyncSession, actor: User, action: str, payload: dict[str, Any]
+) -> tuple[str, Notify]:
+    today = today_tashkent()
+
+    if action == "create_customer":
+        c = await cust.create(
+            session,
+            actor,
+            name=payload["name"],
+            address_form=AddressForm(payload["form"]),
+            raw_phone=payload.get("phone"),
+            note=payload.get("note"),
+        )
+        return t.customer_created(c.name, c.address_form), []
+
+    if action == "create_debts":
+        return await _create_debts(session, actor, payload, today)
+
+    if action == "record_payment":
+        return await _record_payment(session, actor, payload, today)
+
+    if action == "cancel_entry":
+        return await _cancel_entry(session, actor, payload)
+
+    if action == "delete_customer":
+        c = await cust.soft_delete(session, actor, int(payload["id"]))
+        return t.customer_deleted(c.name), []
+
+    if action == "restore_customer":
+        c = await cust.restore(session, actor, int(payload["id"]))
+        return t.customer_restored(c.name), []
+
+    # admin actions (staff management etc.)
+    from bot.handlers.admin.panel import execute_admin_action
+
+    return await execute_admin_action(session, actor, action, payload)
+
+
+async def _create_debts(
+    session: AsyncSession, actor: User, payload: dict[str, Any], today: date
+) -> tuple[str, Notify]:
+    customer = await cust.get(session, int(payload["customer_id"]))
+    items = [
+        ItemInput(int(i["category_id"]), int(i["quantity"]), int(i["unit_price"]), i.get("note"))
+        for i in payload["items"]
+    ]
+    due = date.fromisoformat(payload["due"]) if payload.get("due") else None
+    created = await ledger.create_debts(
+        session, actor, customer_id=customer.id, items=items, due_date=due, today=today
+    )
+    cats = {c.id: c for c in await ledger.categories(session, active_only=False)}
+    codes = await ledger.section_codes(session)
+    by_section = await ledger.balances(session, customer.id)
+    who = await staff_svc.actor_label(session, actor)
+    notify: Notify = []
+    for d in created:
+        rows = t.items_summary(
+            [(cats[i.category_id].name, i.quantity, i.unit_price, i.note) for i in d.items]
+        )
+        code = codes[d.section_id]
+        notify += await _customer_notice(
+            session,
+            customer,
+            t.customer_debt_notice(
+                display(customer), code, rows, d.total, due, by_section.get(d.section_id, 0)
+            ),
+        )
+        notify += await _owners_notice(
+            session, actor, code, t.owner_notice(who, "qarz yozdi", display(customer), d.total)
+        )
+    return t.debt_saved(display(customer)), notify
+
+
+async def _record_payment(
+    session: AsyncSession, actor: User, payload: dict[str, Any], today: date
+) -> tuple[str, Notify]:
+    customer = await cust.get(session, int(payload["customer_id"]))
+    kind = PaymentKind(payload["kind"])
+    payment, plan = await ledger.record_payment(
+        session,
+        actor,
+        customer_id=customer.id,
+        section_id=int(payload["section_id"]),
+        amount=int(payload["amount"]),
+        kind=kind,
+        today=today,
+        debt_id=payload.get("debt_id"),
+        expected=[tuple(x) for x in payload.get("expected", [])] or None,
+        expected_owed=payload.get("owed_before"),
+    )
+    code = (await ledger.section_codes(session))[payment.section_id]
+    left = plan.owed_after
+    who = await staff_svc.actor_label(session, actor)
+    if kind == PaymentKind.PAYMENT:
+        text = t.customer_payment_notice(display(customer), code, payment.amount, left)
+        what = "to'lov yozdi"
+    else:
+        text = t.customer_writeoff_notice(display(customer), code, payment.amount, left)
+        what = "qarzdan kechdi"
+    notify = await _customer_notice(session, customer, text)
+    notify += await _owners_notice(
+        session, actor, code, t.owner_notice(who, what, display(customer), payment.amount)
+    )
+    return t.payment_saved(display(customer), kind.value), notify
+
+
+async def _cancel_entry(
+    session: AsyncSession, actor: User, payload: dict[str, Any]
+) -> tuple[str, Notify]:
+    kind, rid = payload["kind"], int(payload["id"])
+    who = await staff_svc.actor_label(session, actor)
+    codes = await ledger.section_codes(session)
+    if kind == "debt":
+        debt = await ledger.cancel_debt(session, actor, rid)
+        customer = await cust.get(session, debt.customer_id, include_deleted=True)
+        amount, section_id, what = debt.total_amount, debt.section_id, t.KIND_NAMES["debt"].lower()
+        row: Debt | Payment = debt
+    else:
+        pay = await ledger.cancel_payment(session, actor, rid)
+        customer = await cust.get(session, pay.customer_id, include_deleted=True)
+        amount, section_id = pay.amount, pay.section_id
+        what = t.KIND_NAMES[pay.kind].lower()
+        row = pay
+    del row
+    notify: Notify = []
+    if customer.deleted_at is None:
+        notify += await _customer_notice(
+            session,
+            customer,
+            t.customer_correction_notice(display(customer), f"{what} ({format_amount(amount)})"),
+        )
+    notify += await _owners_notice(
+        session,
+        actor,
+        codes[section_id],
+        t.owner_cancel_notice(who, what, display(customer), amount),
+    )
+    return t.cancelled_ok(kind, customer.name), notify

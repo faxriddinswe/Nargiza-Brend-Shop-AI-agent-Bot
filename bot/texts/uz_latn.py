@@ -256,3 +256,374 @@ def phone_moved_alert(role: str, phone_masked: str) -> str:
         f"⚠️ Diqqat: {ROLE_NAMES.get(role, role)} raqami ({phone_masked}) boshqa Telegram'ga o'tdi. "
         "Eski Telegram'dan huquqlar olindi."
     )
+
+
+# ============================================================ Stage 2: customers, debts, payments
+from datetime import date  # noqa: E402
+
+from bot.utils.dates import format_date  # noqa: E402
+from bot.utils.money import format_amount as money  # noqa: E402
+from bot.utils.phone import format_phone  # noqa: E402
+
+MAX_DEBT_LINES: Final = 5  # Telegram messages are limited to 4096 characters
+ASK_CUSTOMER_DEBT: Final = "Kimga qarz yozamiz? Ismini yoki telefon raqamini yozing 👇"
+ASK_CUSTOMER_PAYMENT: Final = "Kim to'lov qildi? Ismini yoki telefon raqamini yozing 👇"
+ASK_CUSTOMER_SEARCH: Final = (
+    "Kimni qidiramiz? Ismini yoki telefon raqamini (oxirgi raqamlarini) yozing 👇"
+)
+SEARCH_EMPTY: Final = "Hech kim topilmadi. Boshqacha yozib ko'ring yoki yangi mijoz qo'shing 👇"
+SEARCH_TOO_SHORT: Final = "Yana bir-ikki harf yozing, iltimos."
+BTN_NEW_CUSTOMER: Final = "➕ Yangi mijoz"
+BTN_MORE_RESULTS: Final = "🔽 Yana ko'rsatish"
+CUSTOMER_NOT_FOUND: Final = "Bu mijoz topilmadi (o'chirilgan bo'lishi mumkin)."
+
+
+def search_header(total: int) -> str:
+    return f"Topildi: {total} ta. Kimni tanlaysiz?"
+
+
+def customer_button(name: str, note: str | None, balance: int) -> str:
+    parts = [name]
+    if note:
+        parts.append(note[:18])
+    parts.append(money(balance) if balance else "qarz yo'q")
+    return " · ".join(parts)
+
+
+# ---- new customer
+NEWC_ASK_NAME: Final = "Yangi mijozning ismi nima?"
+NEWC_ASK_FORM: Final = "Unga qanday murojaat qilamiz?"
+NEWC_ASK_PHONE: Final = (
+    "Telefon raqamini yozing (masalan: 90 123 45 67).\nRaqami bo'lmasa, pastdagi tugmani bosing."
+)
+BTN_NO_PHONE: Final = "📵 Raqami yo'q"
+NEWC_ASK_NOTE: Final = (
+    "Eslatma yozing, bir xil ismlarni ajratish uchun (masalan: «Shahlo opaning qizi»)."
+)
+BTN_SKIP: Final = "⏭ O'tkazib yuborish"
+PHONE_TAKEN: Final = "Bu raqam bilan mijoz bor, uni pastda ko'rsatdim 👇"
+NEWC_BAD_PHONE: Final = "Raqamni to'liq o'qiy olmadim. 9 ta raqamni yozing, masalan: 90 123 45 67"
+
+
+def new_customer_card(name: str, form: str, phone: str | None, note: str | None) -> str:
+    lines = ["👤 Yangi mijoz", "", f"Ism: {name} {form}"]
+    lines.append(f"Telefon: {format_phone(phone)}" if phone else "Telefon: ⚠️ kerak (hozircha yo'q)")
+    if note:
+        lines.append(f"Eslatma: {note}")
+    lines += ["", "Saqlaymizmi?"]
+    return "\n".join(lines)
+
+
+def customer_created(name: str, form: str) -> str:
+    return f"✅ {name} {form} mijozlar ro'yxatiga qo'shildi."
+
+
+# ---- customer card
+BTN_C_DEBT: Final = "➕ Qarz yozish"
+BTN_C_PAY: Final = "💵 To'lov"
+BTN_C_WRITEOFF: Final = "🤝 Kechish"
+BTN_C_DELETE: Final = "🗑 O'chirish"
+
+
+def customer_card(
+    name: str,
+    form: str,
+    phone: str | None,
+    note: str | None,
+    sections: list[tuple[str, int, list[str]]],
+) -> str:
+    """sections: (section code, balance, open debt lines)."""
+    head = f"👤 {name} {form}"
+    lines = [head]
+    lines.append(f"📞 {format_phone(phone)}" if phone else "📞 ⚠️ telefon kerak")
+    if note:
+        lines.append(f"📝 {note}")
+    if not sections:
+        lines += ["", "Qarzi yo'q ✅"]
+    for code, balance, debts in sections:
+        lines += ["", f"💰 {SECTION_NAMES[code]}: {money(balance)}"]
+        lines += [f"  {d}" for d in debts[:MAX_DEBT_LINES]]
+        if len(debts) > MAX_DEBT_LINES:
+            lines.append(f"  {more_debts(len(debts) - MAX_DEBT_LINES)}")
+    return "\n".join(lines)
+
+
+def debt_line(debt_date: date, due: date | None, remaining: int, items: str) -> str:
+    from bot.utils.dates import today_tashkent
+
+    if due is None:
+        tail = "muddatsiz"
+    elif due < today_tashkent():
+        tail = f"⏰ muddati o'tgan ({format_date(due)})"
+    else:
+        tail = f"{format_date(due)} gacha"
+    return f"• {format_date(debt_date)} · {items} — {money(remaining)} ({tail})"
+
+
+def items_short(items: list[tuple[str, int, int, str | None]]) -> str:
+    return ", ".join(f"{n} ×{q}" if q > 1 else n for n, q, _p, _note in items) or "qarz"
+
+
+# ---- debt flow
+DEBT_ASK_CATEGORY: Final = "Qaysi tovar? Tanlang 👇"
+DEBT_ASK_QTY: Final = "Nechta? Tugmani bosing yoki raqam yozing."
+DEBT_BAD_QTY: Final = "Sonni tushunmadim. Raqam bilan yozing, masalan: 2"
+DEBT_ASK_PRICE: Final = "Bittasining narxi qancha? Masalan: 175 ming"
+DEBT_PRICE_UNCLEAR: Final = (
+    "Narxni tushunmadim. Yana bir aytib bering, masalan: 175 ming yoki 175000"
+)
+DEBT_ASK_NOTE: Final = "Rangi yoki o'lchami bormi? Yo'q bo'lsa, «⏭ O'tkazib yuborish» ni bosing."
+BTN_ADD_ITEM: Final = "➕ Yana tovar"
+BTN_ITEMS_DONE: Final = "✅ Tayyor"
+DEBT_ASK_DUE: Final = "Qarz muddati qachon?"
+BTN_DUE_1W: Final = "📅 1 hafta"
+BTN_DUE_2W: Final = "📅 2 hafta"
+BTN_DUE_1M: Final = "📅 1 oy"
+BTN_DUE_DATE: Final = "🗓 Sanani yozish"
+BTN_DUE_NONE: Final = "♾ Muddatsiz"
+DEBT_ASK_DUE_DATE: Final = "Sanani yozing, masalan: 25.12 yoki 25-dekabr"
+DEBT_BAD_DUE: Final = "Sanani tushunmadim yoki u o'tib ketgan. Masalan: 25.12 yoki 25-dekabr"
+DEBT_NO_CUSTOMER_STATE: Final = "Boshidan boshlaymiz. Menyudan «➕ Qarz» ni bosing."
+
+
+def price_assumed(amount: int) -> str:
+    return f"Tushundim: {money(amount)}. Noto'g'ri bo'lsa, «❌ Bekor qilish» ni bosing."
+
+
+def items_summary(rows: list[tuple[str, int, int, str | None]]) -> str:
+    lines = []
+    for name, qty, price, note in rows:
+        extra = f" ({note})" if note else ""
+        lines.append(f"• {name}{extra}: {qty} × {money(price)} = {money(qty * price)}")
+    return "\n".join(lines)
+
+
+def debt_card(
+    customer: str,
+    groups: list[tuple[str, list[tuple[str, int, int, str | None]], int]],
+    due: date | None,
+    total_debt_after: dict[str, int],
+) -> str:
+    lines = ["➕ Qarz yozish", f"👤 {customer}"]
+    for code, rows, subtotal in groups:
+        lines += [
+            "",
+            f"📂 Bo'lim: {SECTION_NAMES[code]}",
+            items_summary(rows),
+            f"Jami: {money(subtotal)}",
+        ]
+    lines += ["", f"📅 Muddat: {format_date(due)}" if due else "📅 Muddatsiz"]
+    after = ", ".join(f"{SECTION_NAMES[c]} {money(v)}" for c, v in total_debt_after.items())
+    lines += [f"Qarzi keyin: {after}", "", "To'g'rimi?"]
+    return "\n".join(lines)
+
+
+def debt_saved(customer: str) -> str:
+    return f"✅ Qarz saqlandi: {customer}."
+
+
+# ---- payment flow
+PAY_NO_DEBT: Final = "Bu mijozning qarzi yo'q ✅"
+PAY_ASK_SECTION: Final = "Qaysi bo'lim qarzidan?"
+PAY_ASK_AMOUNT: Final = "Qancha berdi? Masalan: 100 ming"
+WO_ASK_AMOUNT: Final = "Qancha summani kechamiz? Masalan: 50 ming"
+BTN_WO_ALL: Final = "🤝 Hammasini kechish"
+BTN_PICK_DEBT: Final = "📋 Qarzni tanlash"
+BTN_FIFO: Final = "↩️ Eng eskisidan"
+PAY_PICK_DEBT: Final = "Qaysi qarzdan ayiramiz?"
+PAY_AMOUNT_UNCLEAR: Final = "Summani tushunmadim. Yana bir aytib bering, masalan: 100 ming"
+DUE_PASSED: Final = "Tanlangan muddat o'tib ketdi. Iltimos, qarzni qaytadan yozing."
+PAY_CHANGED: Final = (
+    "Hisob yangilandi, shuning uchun yozuv saqlanmadi. Iltimos, to'lovni qaytadan yozing."
+)
+
+
+def overpay(name: str, owed: int, amount: int) -> str:
+    return f"{name}ning qarzi {money(owed)}. Siz {money(amount)} yozdingiz — bu qarzdan ko'p. Summani qayta yozing, iltimos."
+
+
+def payment_card(
+    customer: str,
+    section: str,
+    kind: str,
+    amount: int,
+    lines: list[tuple[date, int, str]],
+    owed_before: int,
+    owed_after: int,
+) -> str:
+    title = "💵 To'lov" if kind == "payment" else "🤝 Qarzdan kechish"
+    out = [
+        title,
+        f"👤 {customer}",
+        f"📂 Bo'lim: {SECTION_NAMES[section]}",
+        f"Summa: {money(amount)}",
+        "",
+        "Qarzlardan ayiriladi:",
+    ]
+    out += [f"• {format_date(d)} · {item}: −{money(a)}" for d, a, item in lines]
+    out += ["", f"Qarz: {money(owed_before)} → {money(owed_after)}", "", "To'g'rimi?"]
+    return "\n".join(out)
+
+
+def payment_saved(customer: str, kind: str) -> str:
+    what = "To'lov" if kind == "payment" else "Kechish"
+    return f"✅ {what} saqlandi: {customer}."
+
+
+# ---- cancel recent
+BTN_RECENT: Final = "🚫 Yozuvni bekor qilish"
+RECENT_EMPTY: Final = "Hozircha yozuvlar yo'q."
+RECENT_HEADER: Final = "Oxirgi yozuvlar. Bekor qilmoqchi bo'lganingizni tanlang 👇"
+CANCEL_HAS_PAYMENTS: Final = (
+    "Bu qarzga to'lov yozilgan, shuning uchun avval to'lovni bekor qilish kerak."
+)
+CANCEL_ALREADY: Final = "Bu yozuv allaqachon bekor qilingan."
+KIND_NAMES: Final = {"debt": "Qarz", "payment": "To'lov", "write_off": "Kechish"}
+
+
+def recent_button(kind: str, name: str, amount: int, when: date) -> str:
+    return f"{KIND_NAMES[kind]} · {name} · {money(amount)} · {format_date(when)}"
+
+
+def cancel_card(kind: str, name: str, amount: int, when: date) -> str:
+    return (
+        f"↩️ Bekor qilamizmi?\n\n{KIND_NAMES[kind]}: {name}\nSumma: {money(amount)}\nSana: {format_date(when)}\n\n"
+        "Yozuv o'chmaydi — «bekor qilingan» deb tarixda qoladi."
+    )
+
+
+def cancelled_ok(kind: str, name: str) -> str:
+    return f"✅ Bekor qilindi: {KIND_NAMES[kind].lower()} · {name}."
+
+
+# ---- delete / restore customer
+def delete_card(name: str, balances: dict[str, int]) -> str:
+    out = [f"🗑 {name} mijozlar ro'yxatidan o'chirilsinmi?"]
+    if balances:
+        owed = ", ".join(f"{SECTION_NAMES[c]} {money(v)}" for c, v in balances.items())
+        out += [
+            "",
+            f"⚠️ Qarzi bor: {owed}.",
+            "Avval qarzni yopgan ma'qul. O'chirsangiz ham qarz hisobda saqlanadi.",
+        ]
+    out += ["", "Mijoz butunlay yo'qolmaydi, admin uni qaytara oladi."]
+    return "\n".join(out)
+
+
+def customer_deleted(name: str) -> str:
+    return f"✅ {name} o'chirildi."
+
+
+BTN_ADMIN_DELETED: Final = "♻️ O'chirilgan mijozlar"
+DELETED_EMPTY: Final = "O'chirilgan mijozlar yo'q."
+DELETED_HEADER: Final = "O'chirilgan mijozlar. Qaytarmoqchi bo'lganingizni tanlang 👇"
+RESTORE_PHONE_TAKEN: Final = "Qaytarib bo'lmaydi: bu raqam endi boshqa mijozda."
+
+
+def customer_restored(name: str) -> str:
+    return f"✅ {name} qaytarildi."
+
+
+# ---- notifications
+def customer_debt_notice(
+    name: str, section: str, rows: str, total: int, due: date | None, owed: int
+) -> str:
+    due_txt = f"\n📅 Muddat: {format_date(due)}" if due else ""
+    return (
+        f"Assalomu alaykum, {name} 🌸\n\n"
+        f"{SECTION_NAMES[section]} bo'limidan nasiya yozildi:\n{rows}\n"
+        f"Jami: {money(total)}{due_txt}\n\n"
+        f"Hozir {SECTION_NAMES[section]} bo'yicha qarzingiz: {money(owed)}.\n"
+        "Xaridingiz uchun rahmat!"
+    )
+
+
+def customer_payment_notice(name: str, section: str, amount: int, left: int) -> str:
+    tail = f"Qolgan qarz: {money(left)}." if left else "Qarzingiz to'liq yopildi 🎉"
+    return f"{name}, {SECTION_NAMES[section]} bo'limi bo'yicha {money(amount)} to'lovingiz qabul qilindi ✅\n{tail}\nRahmat!"
+
+
+def customer_writeoff_notice(name: str, section: str, amount: int, left: int) -> str:
+    tail = f"Qolgan qarz: {money(left)}." if left else "Qarzingiz to'liq yopildi."
+    return (
+        f"{name}, {SECTION_NAMES[section]} bo'limi bo'yicha qarzingizdan {money(amount)} "
+        f"hisobdan chiqarildi 🤝\n{tail}\nRahmat!"
+    )
+
+
+def customer_correction_notice(name: str, what: str) -> str:
+    return (
+        f"{name}, avvalgi xabarimizda adashibmiz: {what} hisobdan olib tashlandi.\n"
+        "Hisobingiz yangilandi. Noqulaylik uchun uzr so'raymiz 🙏"
+    )
+
+
+def owner_notice(actor: str, what: str, customer: str, amount: int) -> str:
+    return f"🔔 {actor} sizning bo'limingizga {what}: {customer}, {money(amount)}."
+
+
+def owner_cancel_notice(actor: str, what: str, customer: str, amount: int) -> str:
+    return f"🔔 {actor} sizning bo'limingizdagi yozuvni bekor qildi ({what}): {customer}, {money(amount)}."
+
+
+# ---- customer: "Mening qarzim"
+def my_debt(sections: list[tuple[str, int, list[str], list[str]]]) -> str:
+    """sections: (code, balance, debt lines, recent payment lines)."""
+    out: list[str] = []
+    for code, balance, debts, pays in sections:
+        out += [f"💰 {SECTION_NAMES[code]}", f"Qoldiq: {money(balance)}", ""]
+        out += debts[:MAX_DEBT_LINES]
+        if len(debts) > MAX_DEBT_LINES:
+            out.append(more_debts(len(debts) - MAX_DEBT_LINES))
+        if pays:
+            out += ["", "So'nggi to'lovlar:", *pays]
+        out.append("")
+    return "\n".join(out).strip()
+
+
+def my_payment_line(paid_on: date, kind: str, amount: int) -> str:
+    mark = "to'lov" if kind == "payment" else "kechildi"
+    return f"• {format_date(paid_on)} — {money(amount)} ({mark})"
+
+
+def result_line(
+    i: int,
+    name: str,
+    form: str,
+    note: str | None,
+    phone: str | None,
+    balance: int,
+    last: date | None,
+) -> str:
+    head = f"{i}. {name} {form}" + (f" — {note}" if note else "")
+    phone_txt = format_phone(phone) if phone else "⚠️ telefon kerak"
+    debt_txt = money(balance) if balance else "qarz yo'q"
+    last_txt = f" · oxirgi xarid: {format_date(last)}" if last else ""
+    return f"{head}\n   📞 {phone_txt} · 💰 {debt_txt}{last_txt}"
+
+
+def restore_card() -> str:
+    return "♻️ Mijozni qaytaramizmi?\n\nU yana qidiruvda chiqadi."
+
+
+NO_DEBT_FOR: Final = "{who}: qarzi yo'q ✅"
+
+
+def no_debt_for(who: str) -> str:
+    return NO_DEBT_FOR.format(who=who)
+
+
+def debt_start(who: str) -> str:
+    return f"👤 {who}\n\n{DEBT_ASK_CATEGORY}"
+
+
+def pay_header(who: str, owed: int) -> str:
+    return f"👤 {who} — qarzi: {money(owed)}\n\n"
+
+
+def items_total(rows: list[tuple[str, int, int, str | None]], total: int) -> str:
+    return f"{items_summary(rows)}\n\nJami: {money(total)}"
+
+
+def more_debts(n: int) -> str:
+    return f"… yana {n} ta qarz"

@@ -12,16 +12,7 @@ from bot.texts import uz_latn as t
 router = Router(name="staff")
 router.message.filter(RoleFilter(Role.STAFF, Role.ADMIN))
 
-_SOON = {
-    t.BTN_STAFF_DEBT,
-    t.BTN_STAFF_SALE,
-    t.BTN_STAFF_PAYMENT,
-    t.BTN_STAFF_SEARCH,
-    t.BTN_STAFF_REPORT,
-    t.BTN_STAFF_STOCK,
-    t.BTN_STAFF_BROADCAST,
-    t.BTN_STAFF_MORE,
-}
+_SOON = {t.BTN_STAFF_SALE, t.BTN_STAFF_REPORT, t.BTN_STAFF_STOCK, t.BTN_STAFF_BROADCAST}
 
 
 @router.message(F.text.in_(_SOON))

@@ -14,7 +14,7 @@ from bot.db.models import AddressForm, Debt, Payment, PaymentKind, User
 from bot.db.session import read_session, uow
 from bot.services import customers as cust
 from bot.services import ledger
-from bot.services.allocation import OverpaymentError
+from bot.services.allocation import NothingToPayError, OverpaymentError
 from bot.services.ledger import ItemInput
 
 SM = async_sessionmaker[AsyncSession]
@@ -326,3 +326,78 @@ async def test_customer_ledger_view(sm: SM) -> None:
     assert items == [("ko'ylak", 1, 200_000, "qizil, 46")]
     assert debt_view.remaining == 150_000
     assert view[0].recent_payments[0][2] == 50_000
+
+
+# ---------------------------------------------------------------- business review (stage 2)
+async def test_second_card_from_same_balance_is_refused(sm: SM) -> None:
+    """Card A (100k) abandoned, card B (100k) created, both confirmed → only the first may pass."""
+    st = await _staff(sm)
+    cid = await _customer(sm, st)
+    c = await _cats(sm)
+    shop = c["ko'ylak"].section_id
+    await _debt(sm, st, cid, [ItemInput(c["ko'ylak"].id, 1, 500_000)])
+    async with read_session(sm) as s:
+        plan = await ledger.plan_payment(s, customer_id=cid, section_id=shop, amount=100_000)
+    kw = {
+        "expected": [(a.debt_id, a.amount) for a in plan.allocations],
+        "expected_owed": plan.owed_before,
+    }
+    await _pay(sm, st, cid, shop, 100_000, **kw)  # card A confirmed
+    with pytest.raises(ledger.PlanChangedError):
+        await _pay(sm, st, cid, shop, 100_000, **kw)  # card B: same expected plan, balance moved
+    assert await _balances(sm, cid) == {shop: 400_000}
+
+
+async def test_due_date_in_the_past_is_refused(sm: SM) -> None:
+    """Card made before midnight, confirmed after: due date is now before the debt date."""
+    st = await _staff(sm)
+    cid = await _customer(sm, st)
+    c = await _cats(sm)
+    with pytest.raises(ledger.DueDatePassedError):
+        async with uow(sm, actor_id=st.id) as s:
+            await ledger.create_debts(
+                s,
+                st,
+                customer_id=cid,
+                items=[ItemInput(c["yubka"].id, 1, 90_000)],
+                due_date=date(2026, 11, 10),
+                today=TODAY,
+            )
+    assert await _balances(sm, cid) == {}
+
+
+async def test_payments_in_two_sections_do_not_affect_each_other(sm: SM) -> None:
+    """BR-025/066: shop payment never touches the lingerie debt."""
+    st = await _staff(sm)
+    cid = await _customer(sm, st)
+    c = await _cats(sm)
+    shop, lingerie = c["ko'ylak"].section_id, c["ichki kiyim"].section_id
+    await _debt(
+        sm,
+        st,
+        cid,
+        [ItemInput(c["ko'ylak"].id, 1, 300_000), ItemInput(c["ichki kiyim"].id, 1, 200_000)],
+    )
+    await _pay(sm, st, cid, shop, 300_000)
+    assert await _balances(sm, cid) == {lingerie: 200_000}
+    with pytest.raises(NothingToPayError):
+        await _pay(sm, st, cid, shop, 1)  # the shop debt is already zero
+
+
+async def test_payment_to_deleted_customer_refused(sm: SM) -> None:
+    st = await _staff(sm)
+    cid = await _customer(sm, st)
+    c = await _cats(sm)
+    await _debt(sm, st, cid, [ItemInput(c["ko'ylak"].id, 1, 100_000)])
+    async with uow(sm, actor_id=st.id) as s:
+        await cust.soft_delete(s, st, cid)
+    with pytest.raises(cust.CustomerNotFoundError):
+        await _pay(sm, st, cid, c["ko'ylak"].section_id, 50_000)
+
+
+async def test_oversized_debt_refused(sm: SM) -> None:
+    st = await _staff(sm)
+    cid = await _customer(sm, st)
+    c = await _cats(sm)
+    with pytest.raises(ledger.LedgerError):
+        await _debt(sm, st, cid, [ItemInput(c["ko'ylak"].id, 1000, 1_000_000_000)])
