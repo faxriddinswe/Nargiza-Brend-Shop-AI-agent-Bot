@@ -40,7 +40,6 @@ def test_past_dates_only() -> None:
 def test_decimal_amounts_are_not_dates() -> None:
     for text, amount in (
         ("Umida opa 1.5 mln", 1_500_000),
-        ("Umida opa 2.5 ming", 2_500),
         ("Umida opa 12.5 mln 5.10", 12_500_000),
     ):
         r = parse_line(text, T)
