@@ -1240,3 +1240,30 @@ def nb_result(debts: int, new_customers: int, skipped: int, total: int) -> str:
     extra = f"\n🆕 Yangi mijozlar: {new_customers}" if new_customers else ""
     skip = f"\nSaqlanmadi: {skipped} ta" if skipped else ""
     return f"✅ {debts} ta eski qarz yozildi — jami {money(total)}.{extra}{skip}"
+
+
+_INTEGRITY_NAMES: Final = {
+    "overpaid_debt": "qarzdan ortiq to'langan qarz (ID)",
+    "allocation_mismatch": "taqsimoti summasiga teng bo'lmagan to'lov (ID)",
+    "allocated_to_cancelled_debt": "bekor qilingan qarzga taqsimlangan to'lov (ID)",
+    "possible_duplicate_payment": "ehtimoliy takror to'lov (ID)",
+    "debt_without_items": "tovarsiz qarz (ID)",
+    "import_total_mismatch": "summasi mos kelmaydigan eski daftar qarzi (ID)",
+    "remainder_of_cancelled_sale": "bekor savdoning faol qarzi (ID)",
+    "negative_stock": "manfiy ombor (tovar turi ID)",
+}
+
+
+def integrity_text(problems: list[tuple[str, int, list[int]]], debts: int, payments: int) -> str:
+    if not problems:
+        return (
+            f"✅ Yaxlitlik tekshiruvi: muammo yo'q ({debts} qarz, {payments} to'lov tekshirildi)."
+        )
+    out = ["⚠️ Yaxlitlik tekshiruvi: MUAMMO topildi. Hech narsa o'zgartirilmadi.", ""]
+    for code, count, ids in problems:
+        more = f" … (+{count - len(ids)})" if count > len(ids) else ""
+        out.append(
+            f"• {_INTEGRITY_NAMES.get(code, code)}: {count} ta — {', '.join(map(str, ids))}{more}"
+        )
+    out += ["", "Yangi qarz/to'lov kiritishdan oldin dasturchiga xabar bering (docs/RUNBOOK.md)."]
+    return "\n".join(out)
