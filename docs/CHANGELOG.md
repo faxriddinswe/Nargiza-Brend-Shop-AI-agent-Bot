@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.7.0] — Stage 8 (old notebook import, typed) — 2026-11-12
+- `/daftar`: typed notebook lines → preview (✅ ⚠️ ❓ 🔁) → fix → one-tap save; duplicate check by phone and by identical earlier import.
+- Imported debts: shop section, original date, no goods/stock, excluded from "new debt"/turnover; migration 0010.
+- Voice messages are off by default (`VOICE_ENABLED=false`).
+
 ## [0.6.0] — Stage 7 (reminders and announcements) — 2026-11-11
 - Customer debt reminders at 10:00 (2 days before, due day, every 3 days up to 5 times), one message per customer; `reminders_log` prevents duplicates.
 - 08:00 staff call list (overdue, no phone, no due date).

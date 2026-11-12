@@ -137,7 +137,7 @@ async def test_two_day_report_numbers(sm: SM) -> None:
         0,
         0,
     )  # underwear money never leaks into the shop section
-    assert shop.returns_count == 0 and r.new_customers == 1
+    assert shop.returns_count == 0
 
 
 async def test_report_respects_the_period(sm: SM) -> None:
@@ -211,3 +211,12 @@ def test_excel_formula_injection_is_neutralised() -> None:
     wb = load_workbook(BytesIO(debtors_workbook([row], {1: "+998900000000"}, {1: "shop"})))
     cell = wb.worksheets[0]["B2"]
     assert cell.data_type == "s" and cell.value.startswith("'=")
+
+
+async def test_new_customers_counted_in_tashkent_day_of_creation(sm: SM) -> None:
+    from bot.utils.dates import today_tashkent
+
+    await _scenario(sm)  # creates one customer right now
+    today = today_tashkent()
+    assert (await _report(sm, today, today)).new_customers == 1
+    assert (await _report(sm, date(2020, 1, 1), date(2020, 1, 2))).new_customers == 0

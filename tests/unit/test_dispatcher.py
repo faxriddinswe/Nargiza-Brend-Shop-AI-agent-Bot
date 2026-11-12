@@ -21,6 +21,7 @@ def test_dispatcher_builds_with_all_routers() -> None:
         "confirm",
         "staff_ledger",
         "staff_broadcast",
+        "staff_notebook",
         "staff_agent",
         "start",
         "staff",

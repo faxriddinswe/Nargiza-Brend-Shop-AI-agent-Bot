@@ -293,4 +293,4 @@
 - **Q-19 ✅** every imported debt goes to the **shop** section. Imported debts are debt only: no stock change, not in the
   "new debt" / turnover reports (technical inactive category `eski daftar`, `debts.source='import'`).
 - Unclear lines (❓) are never guessed and are not saved; missing phone/date are ⚠️ (saved with a warning).
-- Status: parser + migration 0010 done; service, handler (/daftar), report/cancel/return guards for `source='import'` are NEXT.
+- Status: implemented (`/daftar`). Imported debts can be cancelled (no stock effect) but not returned.

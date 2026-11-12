@@ -286,6 +286,57 @@ async def create_debts(
     return created
 
 
+IMPORT_CATEGORY = "eski daftar"
+
+
+async def import_debt(
+    session: AsyncSession,
+    actor: User,
+    *,
+    customer_id: int,
+    amount: int,
+    debt_date: date,
+    today: date,
+    note: str | None = None,
+) -> int:
+    """Outstanding debt from the paper notebook (BR-142): original date, no goods, no stock, no due date."""
+    require_staff(actor)
+    if not 0 < amount <= MAX_DEBT_TOTAL:
+        raise LedgerError("bad amount")
+    if debt_date > today:
+        raise LedgerError("debt date in the future")
+    customer = await lock_customer(session, customer_id)
+    if customer.deleted_at is not None:
+        raise CustomerNotFoundError(customer_id)
+    cat = (
+        await session.execute(
+            select(Category.id, Category.section_id).where(Category.name == IMPORT_CATEGORY)
+        )
+    ).one()
+    debt = Debt(
+        customer_id=customer_id,
+        section_id=cat.section_id,
+        debt_date=debt_date,
+        total_amount=amount,
+        note=note,
+        source="import",
+        created_by=actor.id,
+    )
+    session.add(debt)
+    await session.flush()
+    session.add(
+        DebtItem(
+            debt_id=debt.id,
+            section_id=cat.section_id,
+            category_id=cat.id,
+            quantity=1,
+            unit_price=amount,
+        )
+    )
+    await session.flush()
+    return debt.id
+
+
 async def set_due_date(session: AsyncSession, actor: User, debt_id: int, due: date | None) -> None:
     require_staff(actor)
     debt = await session.get(Debt, debt_id)
@@ -462,7 +513,9 @@ async def cancel_debt(
     d.cancelled_at = datetime.now(UTC)
     d.cancelled_by = actor.id
     d.cancel_reason = reason
-    if d.kind == "regular":  # goods of a credit record go back to the stock
+    if (
+        d.kind == "regular" and d.source == "manual"
+    ):  # goods of a credit record go back to the stock
         rows = (await session.scalars(select(DebtItem).where(DebtItem.debt_id == d.id))).all()
         back: dict[int, int] = {}
         for it in rows:

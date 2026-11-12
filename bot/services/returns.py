@@ -140,7 +140,12 @@ async def source_view(session: AsyncSession, source_type: str, source_id: int) -
         customer_id, section_id, debt_id = sale.customer_id, sale.section_id, linked
     elif source_type == "debt":
         debt = await session.get(Debt, source_id)
-        if debt is None or debt.status != LedgerStatus.ACTIVE or debt.kind != "regular":
+        if (
+            debt is None
+            or debt.status != LedgerStatus.ACTIVE
+            or debt.kind != "regular"
+            or debt.source != "manual"
+        ):
             raise SourceNotFoundError(source_id)
         raw = (
             await session.scalars(
@@ -211,6 +216,7 @@ async def returnable_sources(
         .where(
             Debt.status == LedgerStatus.ACTIVE,
             Debt.kind == "regular",
+            Debt.source == "manual",
             DebtItem.category_id == category_id,
         )
         .order_by(Debt.debt_date.desc(), Debt.id.desc())

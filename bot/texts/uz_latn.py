@@ -1179,3 +1179,63 @@ def bc_result(delivered: int, blocked: int, failed: int) -> str:
 
 
 AI_VOICE_OFF: Final = "🎤 Ovozli xabar hozircha o'chirilgan. Iltimos, yozib yuboring — men yozuvni ham xuddi shunday tushunaman."
+
+
+# ============================================================ Stage 8: old notebook (typed)
+NB_ASK: Final = (
+    "📒 Eski daftarni kiritish\n\n"
+    "Daftardagi qarzlarni qatorma-qator yuboring. Har qator:\n"
+    "<ism> opa/aka, <telefon>, <summa>, <sana>\n"
+    "Masalan: Umida opa, 90 123 45 67, 350 ming, 12-oktabr\n\n"
+    "• Faqat hozir to'lanmagan qoldiq qarzni yozing.\n"
+    "• Telefon va sana bo'lmasa ham bo'ladi, lekin bilsangiz yozing.\n"
+    "• Hammasi Do'kon bo'limiga yoziladi.\n"
+    "• Tushunmagan qatorimni taxmin qilmayman — ❓ deb ko'rsataman.\n"
+    "Tugatish: /start"
+)
+NB_BTN_SAVE: Final = "✅ Saqlash"
+NB_BTN_EDIT: Final = "✏️ Tuzatish"
+NB_BTN_MORE: Final = "➕ Yana qator"
+NB_BTN_CANCEL: Final = "❌ Bekor"
+NB_EDIT_ASK: Final = "Qator raqamini va yangi matnni yozing. Masalan: 3 Umida opa, 90 123 45 67, 350 ming\nO'chirish uchun: 3 -"
+NB_EDIT_BAD: Final = "Tushunmadim. Raqam va matn kerak, masalan: 3 Umida opa, 350 ming"
+NB_MORE_ASK: Final = "Yana qatorlarni yuboring."
+NB_NOTHING: Final = "Saqlanadigan qator yo'q. Tuzating yoki yangi qator yuboring."
+NB_TOO_MANY: Final = "Bir safarda 40 tagacha qator. Avval shularni saqlang."
+NB_CANCELLED: Final = "Bekor qilindi. Hech narsa yozilmadi."
+NB_EXPIRED: Final = "Bu ro'yxat eskirgan. /daftar bilan qaytadan boshlang."
+_NB_MARK = {"ok": "✅", "warn": "⚠️", "bad": "❓", "dup": "🔁"}
+
+
+def nb_preview(rows: list[object]) -> str:
+    from bot.services.notebook import Row
+
+    out = ["📒 Eski daftar — tekshiring:", ""]
+    counts = {"ok": 0, "warn": 0, "bad": 0, "dup": 0}
+    total = 0
+    for r in rows:
+        assert isinstance(r, Row)  # noqa: S101
+        counts[r.status] += 1
+        ln = r.line
+        what = f"{ln.name or '?'} {ln.form or ''}".strip()
+        amount = money(ln.amount) if ln.amount else "summa yo'q"
+        when = format_date(ln.debt_date) if ln.debt_date else "sana yo'q"
+        phone = format_phone(ln.phone) if ln.phone else "telefon yo'q"
+        note = f"\n    → {'; '.join(r.notes)}" if r.notes else ""
+        out.append(f"{r.n}. {_NB_MARK[r.status]} {what} · {amount} · {when} · {phone}{note}")
+        if r.saved and ln.amount:
+            total += ln.amount
+    out += [
+        "",
+        f"✅ {counts['ok']}  ⚠️ {counts['warn']}  ❓ {counts['bad']}  🔁 {counts['dup']}",
+        f"Saqlanadi: {counts['ok'] + counts['warn']} ta, jami {money(total)}",
+    ]
+    if counts["bad"] or counts["dup"]:
+        out.append("❓ va 🔁 qatorlar saqlanmaydi — ✏️ Tuzatish bilan to'g'rilang.")
+    return "\n".join(out)
+
+
+def nb_result(debts: int, new_customers: int, skipped: int, total: int) -> str:
+    extra = f"\n🆕 Yangi mijozlar: {new_customers}" if new_customers else ""
+    skip = f"\nSaqlanmadi: {skipped} ta" if skipped else ""
+    return f"✅ {debts} ta eski qarz yozildi — jami {money(total)}.{extra}{skip}"

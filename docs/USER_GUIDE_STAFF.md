@@ -143,3 +143,18 @@ Ovozli xabar 1,5 daqiqagacha bo'lsin. Bot «hozir tinglay olmayapman» desa, pas
 - **Har kuni 08:00** — sizga qo'ng'iroq ro'yxati keladi: muddati o'tganlar (telefon bilan), telefoni yo'q qarzdorlar, muddati belgilanmagan qarzlar.
 - **Har kuni 10:00** — mijozlarga muloyim eslatma ketadi: muddatdan 2 kun oldin, muddat kuni, keyin har 3 kunda (ko'pi bilan 5 marta). Ikki bo'limda qarzi bo'lsa — bitta xabar. Muddati yo'q qarzga eslatma bormaydi.
 - Qarz to'langach eslatma to'xtaydi. Bir eslatma ikki marta ketmaydi.
+
+
+## 📒 Eski daftarni botga kiritish (`/daftar`)
+
+1. Botga `/daftar` deb yozing.
+2. Daftardagi qarzlarni qatorma-qator yuboring (bir xabarda ko'p qator bo'lishi mumkin, 40 tagacha):
+   `Umida opa, 90 123 45 67, 350 ming, 12-oktabr`
+   - Faqat hozir **to'lanmagan qoldiq** qarzni yozing. Ism va opa/aka, summa shart; telefon va sana bo'lsa yaxshi.
+   - Hamma eski qarz **Do'kon** bo'limiga yoziladi.
+3. Bot ro'yxat ko'rsatadi: ✅ tushunarli · ⚠️ telefon yoki sana yo'q (saqlanadi, lekin ogohlantiradi) · ❓ tushunmadi (saqlanmaydi) · 🔁 allaqachon kiritilgan.
+4. ❓ qatorni **✏️ Tuzatish** bilan to'g'rilang: `3 Umida opa, 90 123 45 67, 350 ming` (o'chirish: `3 -`).
+5. **✅ Saqlash** — hammasi bir marta yoziladi. Xato bo'lsa, qarzni «Boshqa → Yozuvni bekor qilish» bilan bekor qilish mumkin.
+
+Bot taxmin qilmaydi: summa noaniq («350-400 ming»), sana kelajakda, yoki shu ismli mijoz bor-u telefon yozilmagan bo'lsa — ❓ deydi.
+Telefoni bor mijoz bazada bo'lsa, qarz o'sha mijozga qo'shiladi. Eski qarz ombor qoldig'ini o'zgartirmaydi va «yangi qarz berildi» hisobotiga kirmaydi.

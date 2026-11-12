@@ -126,7 +126,12 @@ async def sales_report(
 
     r_debts = await session.execute(
         select(Debt.section_id, func.count(), cast(func.sum(Debt.total_amount), BigInteger))
-        .where(Debt.status == ACTIVE, Debt.kind == "regular", Debt.debt_date.between(start, end))
+        .where(
+            Debt.status == ACTIVE,
+            Debt.kind == "regular",
+            Debt.source == "manual",
+            Debt.debt_date.between(start, end),
+        )
         .group_by(Debt.section_id)
     )
     for sid, n, total in r_debts.all():
@@ -207,7 +212,10 @@ async def sales_report(
             )
             .join(Debt, Debt.id == DebtItem.debt_id)
             .where(
-                Debt.status == ACTIVE, Debt.kind == "regular", Debt.debt_date.between(start, end)
+                Debt.status == ACTIVE,
+                Debt.kind == "regular",
+                Debt.source == "manual",
+                Debt.debt_date.between(start, end),
             )
             .group_by(DebtItem.section_id, DebtItem.category_id)
         ),

@@ -25,6 +25,7 @@ from bot.handlers.staff import broadcast as staff_broadcast
 from bot.handlers.staff import confirm as staff_confirm
 from bot.handlers.staff import ledger as staff_ledger
 from bot.handlers.staff import menu as staff_menu
+from bot.handlers.staff import notebook as staff_notebook
 from bot.logging_setup import safe_frames, setup_logging
 from bot.middlewares.auth import UserMiddleware
 from bot.scheduler.jobs import setup_scheduler
@@ -83,6 +84,7 @@ def build_dispatcher(settings: Settings, engine: AsyncEngine) -> Dispatcher:
         staff_confirm.router,
         staff_ledger.router,
         staff_broadcast.router,
+        staff_notebook.router,
         staff_agent.router,
         start.router,
         staff_menu.router,
