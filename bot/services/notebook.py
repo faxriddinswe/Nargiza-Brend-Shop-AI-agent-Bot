@@ -35,6 +35,9 @@ class Row:
     status: str  # ok | warn | bad | dup
     customer_id: int | None = None  # existing customer
     notes: list[str] = field(default_factory=list)
+    force: bool = (
+        False  # line began with "+ ": staff confirmed it is a second, real debt (not a duplicate)
+    )
 
     @property
     def saved(self) -> bool:
@@ -60,8 +63,9 @@ class NotebookError(ValueError):
 async def plan_row(
     session: AsyncSession, n: int, text: str, today: date, seen: set[tuple[Any, ...]]
 ) -> Row:
-    line = parse_line(text, today)
-    row = Row(n, text, line, "ok")
+    force = text.lstrip().startswith("+ ")
+    line = parse_line(text.lstrip()[2:] if force else text, today)
+    row = Row(n, text, line, "ok", force=force)
     row.notes = list(line.problems)
     if line.problems:
         row.status = "bad"
@@ -100,6 +104,8 @@ async def plan_row(
             row.notes = [f"telefon boshqa mijozniki: {existing.name} — raqamni tekshiring"]
             return row
         row.notes.append(f"mavjud mijoz: {existing.name}")
+        if set(search_key(line.name).split()) != set(existing.search_name.split()):
+            line.warnings.append(f"ism qisman mos: telefon {existing.name} nikida")
         dup = await session.scalar(
             select(Debt.id).where(
                 Debt.customer_id == existing.id, Debt.source == "import", Debt.status == LedgerStatus.ACTIVE,
@@ -107,11 +113,19 @@ async def plan_row(
                 *([Debt.debt_date == when] if line.debt_date else []),  # no date: same amount on ANY date counts
             ).limit(1)
         )  # fmt: skip
-        if dup is not None:
-            row.status, row.notes = "dup", ["bu qarz allaqachon kiritilgan"]
+        if dup is not None and not force:
+            row.status, row.notes = (
+                "dup",
+                [
+                    "bu qarz allaqachon kiritilgan (yana bir qarz bo'lsa, qator boshiga «+ » qo'ying)"
+                ],
+            )
             return row
-    if (ident, line.amount, when) in seen:
-        row.status, row.notes = "dup", ["ro'yxatda takror"]
+    if (ident, line.amount, when) in seen and not force:
+        row.status, row.notes = (
+            "dup",
+            ["ro'yxatda takror (yana bir qarz bo'lsa, qator boshiga «+ » qo'ying)"],
+        )
         return row
     seen.add((ident, line.amount, when))
     if existing is None:
