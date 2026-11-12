@@ -47,7 +47,13 @@ async def test_statuses(sm: SM) -> None:
             "Umida opa, 90 123 45 67, 350 ming, 12-oktabr",  # same line twice → duplicate
         ],
     )
-    assert [r.status for r in rows] == ["ok", "warn", "bad", "bad", "dup"]
+    assert [r.status for r in rows] == [
+        "warn",
+        "warn",
+        "bad",
+        "bad",
+        "dup",
+    ]  # new customers are always flagged ⚠️
 
 
 async def test_save_creates_customers_and_dated_debts_in_shop(sm: SM) -> None:
@@ -105,3 +111,49 @@ async def test_imported_debt_is_debt_only(sm: SM) -> None:
         await ledger.cancel_debt(s, st, entry.id)
     async with read_session(sm) as s:
         assert not any(r.qty for r in await inventory.levels(s, active_only=False))
+
+
+async def test_wrong_phone_is_not_given_to_another_customer(sm: SM) -> None:
+    st = await _staff(sm)
+    async with uow(sm, actor_id=st.id) as s:
+        await cust.create(
+            s, st, name="Nodira", address_form=AddressForm.OPA, raw_phone="+998901234567"
+        )
+    [row] = await _plan(sm, ["Umida opa, 90 123 45 67, 350 ming"])
+    assert row.status == "bad" and "boshqa mijoz" in row.notes[0]
+
+
+async def test_parallel_save_writes_once(sm: SM) -> None:
+    import asyncio
+
+    st = await _staff(sm)
+    rows = await _plan(sm, ["Umida opa, 90 123 45 67, 350 ming, 12-oktabr"])
+
+    async def go() -> notebook.SaveResult:
+        async with uow(sm, actor_id=st.id) as s:
+            return await notebook.save(s, st, rows, TODAY)
+
+    a, b = await asyncio.gather(go(), go())
+    assert a.debts + b.debts == 1
+    async with read_session(sm) as s:
+        c = await cust.find_by_phone(s, "+998901234567")
+        assert c is not None and sum((await ledger.balances(s, c.id)).values()) == 350_000
+
+
+def test_long_line_is_rejected() -> None:
+    from bot.utils.notebook import parse_line
+
+    assert "qator juda uzun" in parse_line("A" * 500, TODAY).problems
+
+
+async def test_same_name_twice_without_phone_is_not_merged(sm: SM) -> None:
+    await _staff(sm)
+    rows = await _plan(sm, ["Jasur aka 100 ming", "Jasur aka 200 ming"])
+    assert [r.status for r in rows] == ["warn", "bad"]
+
+
+async def test_undated_line_retyped_later_is_a_duplicate(sm: SM) -> None:
+    st = await _staff(sm)
+    line = "Umida opa, 90 123 45 67, 350 ming"
+    await _save(sm, st, [line])
+    assert [r.status for r in await _plan(sm, [line])] == ["dup"]

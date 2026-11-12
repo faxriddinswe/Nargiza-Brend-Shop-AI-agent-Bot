@@ -63,7 +63,7 @@ async def begin(message: Message, state: FSMContext) -> None:
     await message.answer(t.NB_ASK)
 
 
-@router.message(Nb.collecting, F.text)
+@router.message(Nb.collecting, F.text, ~F.text.startswith("/"))
 async def add_lines(message: Message, state: FSMContext, sm: SM) -> None:
     lines: list[str] = (await state.get_data()).get("lines", [])
     new = [x.strip() for x in (message.text or "").splitlines() if x.strip()]
@@ -74,11 +74,15 @@ async def add_lines(message: Message, state: FSMContext, sm: SM) -> None:
     await _show(message, state, sm)
 
 
-@router.message(Nb.editing, F.text)
+@router.message(Nb.editing, F.text, ~F.text.startswith("/"))
 async def edit_line(message: Message, state: FSMContext, sm: SM) -> None:
     head, _, rest = (message.text or "").strip().partition(" ")
     lines: list[str] = (await state.get_data()).get("lines", [])
-    if not head.isdigit() or not 1 <= int(head) <= len(lines) or not rest.strip():
+    if (
+        not (head.isascii() and head.isdigit())
+        or not 1 <= int(head) <= len(lines)
+        or not rest.strip()
+    ):
         await message.answer(t.NB_EDIT_BAD)
         return
     i = int(head) - 1
@@ -115,9 +119,11 @@ async def on_button(
         if not any(r.saved for r in rows):
             await cb.message.answer(t.NB_NOTHING)
             return
-        await state.clear()  # one tap = one save: a second tap finds no state
-        async with uow(sm, actor_id=user.id) as s:
+        async with uow(
+            sm, actor_id=user.id
+        ) as s:  # saving is serialised and re-checked inside (see notebook.save)
             res = await notebook.save(s, user, rows, today)
+        await state.clear()  # only after success: on an error the typed lines are kept
         await cb.message.answer(t.nb_result(res.debts, res.new_customers, res.skipped, res.total))
 
 

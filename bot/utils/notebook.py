@@ -27,6 +27,7 @@ _NUMBER_WORDS = {
     "qirq", "ellik", "oltmish", "yetmish", "sakson", "toqson", "yuz", "ming", "million", "mln", "yarim",
 }  # fmt: skip
 MAX_AGE_DAYS = 366 * 3
+MAX_LINE = 200
 
 
 @dataclass(slots=True)
@@ -68,6 +69,9 @@ def parse_past_date(text: str, today: date) -> date | None:
     return cand if today - timedelta(days=MAX_AGE_DAYS) <= cand <= today else None
 
 
+_SCALE_AFTER = re.compile(r"\s*(?:mln|ming|million|millon|milion|mlrd|milliard|minglik|k)(?![a-z])")
+
+
 def _take_date(text: str, today: date) -> tuple[str, date | None, bool]:
     """Remove the date from the text (original letters kept). Returns (rest, date, found_but_invalid)."""
     low = text.lower().replace("'", "").replace("\u2019", "").replace("\u02bc", "")
@@ -77,6 +81,8 @@ def _take_date(text: str, today: date) -> tuple[str, date | None, bool]:
         for m in rx.finditer(low):
             if rx is _DATE_WORD and m[2] not in MONTHS:
                 continue
+            if rx is _DATE_NUM and _SCALE_AFTER.match(low, m.end()):
+                continue  # "1.5 mln" is an amount, not the 1st of May
             d = parse_past_date(m[0], today)
             return text[: m.start()] + " " + text[m.end() :], d, d is None
     return text, None, False
@@ -87,6 +93,9 @@ def parse_line(line: str, today: date) -> NotebookLine:
     text = line.strip()
     if not text:
         out.raw_ok = False
+        return out
+    if len(text) > MAX_LINE:
+        out.problems.append("qator juda uzun")
         return out
     # phone
     if m := _PHONE.search(text):

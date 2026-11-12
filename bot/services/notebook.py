@@ -12,8 +12,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
+from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.db.models import AddressForm, Customer, Debt, LedgerStatus, User
@@ -23,6 +24,7 @@ from bot.utils.notebook import NotebookLine, parse_line
 from bot.utils.translit import search_key
 
 MAX_ROWS = 40
+NOTEBOOK_LOCK = 7_300_001
 
 
 @dataclass(slots=True)
@@ -56,7 +58,7 @@ class NotebookError(ValueError):
 
 
 async def plan_row(
-    session: AsyncSession, n: int, text: str, today: date, seen: set[tuple[str, int, date]]
+    session: AsyncSession, n: int, text: str, today: date, seen: set[tuple[Any, ...]]
 ) -> Row:
     line = parse_line(text, today)
     row = Row(n, text, line, "ok")
@@ -83,13 +85,26 @@ async def plan_row(
         row.status, row.notes = "bad", ["opa yoki aka yozilmagan"]
         return row
     ident = line.phone or search_key(line.name)
+    if line.phone is None and ("name", ident, date.min) in seen:
+        row.status, row.notes = (
+            "bad",
+            ["ro'yxatda shu ism takrorlandi — telefonini yozing (bir odammi, boshqami?)"],
+        )
+        return row
+    if line.phone is None:
+        seen.add(("name", ident, date.min))
     if existing is not None:
         row.customer_id = existing.id
+        if not set(search_key(line.name).split()) & set(existing.search_name.split()):
+            row.status = "bad"
+            row.notes = [f"telefon boshqa mijozniki: {existing.name} — raqamni tekshiring"]
+            return row
         row.notes.append(f"mavjud mijoz: {existing.name}")
         dup = await session.scalar(
             select(Debt.id).where(
                 Debt.customer_id == existing.id, Debt.source == "import", Debt.status == LedgerStatus.ACTIVE,
-                Debt.total_amount == line.amount, Debt.debt_date == when,
+                Debt.total_amount == line.amount,
+                *([Debt.debt_date == when] if line.debt_date else []),  # no date: same amount on ANY date counts
             ).limit(1)
         )  # fmt: skip
         if dup is not None:
@@ -99,7 +114,9 @@ async def plan_row(
         row.status, row.notes = "dup", ["ro'yxatda takror"]
         return row
     seen.add((ident, line.amount, when))
-    if line.warnings:
+    if existing is None:
+        row.notes.append("yangi mijoz yaratiladi")
+    if line.warnings or existing is None:
         row.status = "warn"
         row.notes += line.warnings
     return row
@@ -109,13 +126,15 @@ async def plan(session: AsyncSession, lines: list[str], today: date) -> list[Row
     clean = [x for x in (ln.strip() for ln in lines) if x]
     if len(clean) > MAX_ROWS:
         raise NotebookError("too many rows")
-    seen: set[tuple[str, int, date]] = set()
+    seen: set[tuple[Any, ...]] = set()
     return [await plan_row(session, i, text, today, seen) for i, text in enumerate(clean, 1)]
 
 
 async def save(session: AsyncSession, actor: User, rows: list[Row], today: date) -> SaveResult:
     """Write every ok/warn row in the caller's transaction. Rows are re-checked against the database first."""
     result = SaveResult()
+    # one import at a time: a double tap waits here, then sees the first save and skips it as a duplicate
+    await session.execute(select(func.pg_advisory_xact_lock(NOTEBOOK_LOCK)))
     fresh = await plan(session, [r.text for r in rows], today)
     created: dict[str, int] = {}  # a customer created earlier in this very batch
     for row in fresh:
