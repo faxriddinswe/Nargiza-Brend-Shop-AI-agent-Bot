@@ -294,8 +294,3 @@
   "new debt" / turnover reports (technical inactive category `eski daftar`, `debts.source='import'`).
 - Unclear lines (❓) are never guessed and are not saved; missing phone/date are ⚠️ (saved with a warning).
 - Status: implemented (`/daftar`). Imported debts can be cancelled (no stock effect) but not returned.
-- **Audit decisions (2026-11-12, owner: "decide the safest, don't ask")**: a line without a date gets today's date with a ⚠️;
-  phone-less lines are never merged (they may be different people); a unit-less amount (`350`) is ❓ in the import;
-  a phone owned by a customer with a completely different name is ❓, a partly matching name is ⚠️;
-  parallel "Save" taps are serialised (advisory lock) and the second finds duplicates;
-  a real second identical debt is saved by starting the line with `+ ` (otherwise it is skipped as a duplicate).
