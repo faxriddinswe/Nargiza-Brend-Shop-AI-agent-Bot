@@ -15,6 +15,8 @@ from bot.db.models import Role, User
 from bot.db.session import read_session, uow
 from bot.middlewares.auth import RoleFilter
 from bot.services import notebook
+from bot.services.customers import CustomerError
+from bot.services.ledger import LedgerError
 from bot.texts import uz_latn as t
 from bot.utils.dates import today_tashkent
 
@@ -119,11 +121,16 @@ async def on_button(
         if not any(r.saved for r in rows):
             await cb.message.answer(t.NB_NOTHING)
             return
-        async with uow(
-            sm, actor_id=user.id
-        ) as s:  # saving is serialised and re-checked inside (see notebook.save)
-            res = await notebook.save(s, user, rows, today)
+        try:
+            async with uow(sm, actor_id=user.id) as s:  # serialised and re-checked inside save
+                res = await notebook.save(s, user, rows, today)
+        except (LedgerError, CustomerError):
+            await cb.message.answer(t.NB_SAVE_FAILED)  # rolled back; the typed lines are kept
+            return
         await state.clear()  # only after success: on an error the typed lines are kept
+        if res.debts == 0:  # a parallel second tap: the first one already saved everything
+            await cb.message.answer(t.NB_NOTHING)
+            return
         await cb.message.answer(t.nb_result(res.debts, res.new_customers, res.skipped, res.total))
 
 

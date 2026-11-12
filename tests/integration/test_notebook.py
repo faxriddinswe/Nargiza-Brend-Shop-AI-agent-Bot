@@ -157,3 +157,30 @@ async def test_undated_line_retyped_later_is_a_duplicate(sm: SM) -> None:
     line = "Umida opa, 90 123 45 67, 350 ming"
     await _save(sm, st, [line])
     assert [r.status for r in await _plan(sm, [line])] == ["dup"]
+
+
+async def test_payment_is_fifo_over_imported_old_debt(sm: SM) -> None:
+    """An old imported debt is paid first (oldest date), the payment never exceeds what is owed."""
+    from bot.db.models import PaymentKind
+
+    st = await _staff(sm)
+    await _save(
+        sm,
+        st,
+        ["Umida opa, 90 123 45 67, 100 ming, 1.09", "Umida opa, 90 123 45 67, 50 ming, 1.10"],
+    )
+    async with read_session(sm) as s:
+        umida = await cust.find_by_phone(s, "+998901234567")
+        assert umida is not None
+        shop = (await ledger.section_ids(s))["shop"]
+    async with uow(sm, actor_id=st.id) as s:
+        await ledger.record_payment(
+            s, st, customer_id=umida.id, section_id=shop, amount=120_000,
+            kind=PaymentKind.PAYMENT, today=TODAY,
+        )  # fmt: skip
+    async with read_session(sm) as s:
+        views = await ledger.debts_with_remaining(s, umida.id, only_open=False)
+        assert [(v.debt_date, v.remaining) for v in views] == [
+            (date(2026, 9, 1), 0),
+            (date(2026, 10, 1), 30_000),
+        ]

@@ -1202,6 +1202,7 @@ NB_EDIT_BAD: Final = "Tushunmadim. Raqam va matn kerak, masalan: 3 Umida opa, 35
 NB_MORE_ASK: Final = "Yana qatorlarni yuboring."
 NB_NOTHING: Final = "Saqlanadigan qator yo'q. Tuzating yoki yangi qator yuboring."
 NB_TOO_MANY: Final = "Bir safarda 40 tagacha qator. Avval shularni saqlang."
+NB_SAVE_FAILED: Final = "Saqlab bo'lmadi, hech narsa yozilmadi. Ro'yxat saqlanib turibdi — tekshirib, yana ✅ Saqlash bosing."
 NB_CANCELLED: Final = "Bekor qilindi. Hech narsa yozilmadi."
 NB_EXPIRED: Final = "Bu ro'yxat eskirgan. /daftar bilan qaytadan boshlang."
 _NB_MARK = {"ok": "✅", "warn": "⚠️", "bad": "❓", "dup": "🔁"}
