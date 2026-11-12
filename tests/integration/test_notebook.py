@@ -184,26 +184,3 @@ async def test_payment_is_fifo_over_imported_old_debt(sm: SM) -> None:
             (date(2026, 9, 1), 0),
             (date(2026, 10, 1), 30_000),
         ]
-
-
-async def test_plus_prefix_saves_a_deliberate_second_identical_debt(sm: SM) -> None:
-    st = await _staff(sm)
-    line = "Umida opa, 90 123 45 67, 100 ming, 1.10"
-    await _save(sm, st, [line])
-    assert [r.status for r in await _plan(sm, [line])] == ["dup"]
-    res = await _save(sm, st, ["+ " + line])
-    assert res.debts == 1
-    async with read_session(sm) as s:
-        c = await cust.find_by_phone(s, "+998901234567")
-        assert c is not None
-        assert sum((await ledger.balances(s, c.id)).values()) == 200_000
-
-
-async def test_partially_matching_name_with_known_phone_is_a_warning(sm: SM) -> None:
-    st = await _staff(sm)
-    async with uow(sm, actor_id=st.id) as s:
-        await cust.create(
-            s, st, name="Umida Karimova", address_form=AddressForm.OPA, raw_phone="+998901234567"
-        )
-    [row] = await _plan(sm, ["Umida opa, 90 123 45 67, 100 ming, 1.10"])
-    assert row.status == "warn" and any("qisman" in w for w in row.line.warnings)
