@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from bot.config import Settings
 from bot.db.models import Role, User
 from bot.db.session import read_session, uow
-from bot.services import integrity, reminders, reports
+from bot.services import reminders, reports
 from bot.services import settings as settings_svc
 from bot.services import users as users_svc
 from bot.texts import uz_latn as t
@@ -173,47 +173,6 @@ async def morning_call_list(bot: Sender, sm: SM, *, today: date | None = None) -
     return sent
 
 
-async def _admin_ids(sm: SM) -> list[int]:
-    async with read_session(sm) as s:
-        rows = await s.scalars(
-            select(User.telegram_id).where(
-                User.role == Role.ADMIN.value,
-                User.is_blocked.is_(False),
-                User.bot_blocked_at.is_(None),
-            )
-        )
-        return list(rows.all())
-
-
-async def integrity_check(bot: Sender, sm: SM, *, today: date | None = None) -> int:
-    """02:00: recompute and look for impossible records (master 9.3). Report goes to admins only."""
-    day = today or today_tashkent()
-    if not await _claim(sm, "integrity.last_run", day.isoformat()):
-        return 0
-    try:
-        async with read_session(sm) as s:
-            rep = await integrity.run_checks(s)
-    except Exception:
-        await _release(sm, "integrity.last_run")
-        raise
-    text = t.integrity_text(
-        [(p.code, p.count, p.ids) for p in rep.problems], rep.debts, rep.payments
-    )
-    sent = 0
-    for chat_id in await _admin_ids(sm):
-        try:
-            await bot.send_message(chat_id, text)
-            sent += 1
-        except Exception as e:
-            log.warning("integrity_send_failed", error=type(e).__name__)
-        await asyncio.sleep(SEND_PAUSE)
-    if not rep.ok:
-        log.error("integrity_problems", codes=[p.code for p in rep.problems])
-    if sent == 0:
-        await _release(sm, "integrity.last_run")  # nobody got it: allow a retry
-    return sent
-
-
 def setup_scheduler(bot: Sender, sm: SM, settings: Settings) -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler(timezone=settings.tz)
     common = {
@@ -240,9 +199,6 @@ def setup_scheduler(bot: Sender, sm: SM, settings: Settings) -> AsyncIOScheduler
     )
     scheduler.add_job(
         morning_call_list, "cron", hour=8, minute=0, id="call_list", args=[bot, sm], **common
-    )
-    scheduler.add_job(
-        integrity_check, "cron", hour=2, minute=0, id="integrity", args=[bot, sm], **common
     )
     return scheduler
 

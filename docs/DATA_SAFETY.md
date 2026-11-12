@@ -38,9 +38,7 @@ For now: the test is manual (the admin temporarily places the key, RUNBOOK 5). O
 (e.g. an additional layer of encryption with a separate key pair used only for testing).
 
 ## 3. Integrity check (nightly)
-Implemented (`bot/services/integrity.py`, job at 02:00, admins only, once per day). It only reports ids, never changes data:
-overpaid debt, payment allocations ≠ amount, payment allocated to a cancelled debt, possible duplicate payment (same customer/amount/day within 60 s),
-negative stock, regular debt without items, imported debt total ≠ items, active remainder debt of a cancelled sale.
+Negative debt, overpayment, duplicate payment, negative stock, orphaned records → report to the admin.
 
 ## 4. Reconciliation with the till
 A reminder in the 20:00 report.
