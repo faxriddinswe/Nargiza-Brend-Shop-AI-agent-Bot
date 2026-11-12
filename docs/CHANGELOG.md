@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.8.0] — Stage 9 (data safety, part 2) — 2026-11-12
+- Nightly integrity check at 02:00 (`bot/services/integrity.py`): reports impossible records to admins; read-only.
+- Still open: automatic weekly restore test (private key conflict), Google Drive copy (needs owner consent), external uptime monitoring.
+
 ## [0.7.0] — Stage 8 (old notebook import, typed) — 2026-11-12
 - `/daftar`: typed notebook lines → preview (✅ ⚠️ ❓ 🔁) → fix → one-tap save; duplicate check by phone and by identical earlier import.
 - Imported debts: shop section, original date, no goods/stock, excluded from "new debt"/turnover; migration 0010.
