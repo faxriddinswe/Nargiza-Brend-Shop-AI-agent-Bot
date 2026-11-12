@@ -1,8 +1,7 @@
 # Data Safety
 
 > If a debt or sale record is lost, the family loses money. Source: master prompt, section 9.
-> Status: write level, backup, restore, nightly integrity check, weekly restore test and watchdog are implemented (phase 9).
-> Not enabled by code: Google Drive copy (needs the owner's Google account — guide in RUNBOOK) and external uptime monitoring (needs an account).
+> Status: part 1 (write level, backup, restore) is working; integrity checks and monitoring — phase 9.
 
 ## 1. At the write level
 - Each business action is a single transaction.
@@ -33,26 +32,13 @@ Weekly restore test — `scripts/restore_test.sh` (each table's row count is com
 - `restore.sh` first restores into a temporary database; when swapping the main database, the old database is not deleted (`_old_<timestamp>`).
 - Tested (2026-11-11): backup → restore, row counts of all 10 tables matched; a wrong key was rejected; main-database swap.
 
-### Weekly AUTOMATIC restore test (phase 9)
-The main private key is never on the server, so the automatic test uses a SEPARATE key pair that exists only for it:
-- Every Sunday 03:30 the weekly backup also writes `backups/restore-test/latest.dump.age`, encrypted to a test key
-  (`backups/restore-test/test.key`, created automatically on the first weekly run, mode 600). This copy is NOT sent to Telegram/Drive.
-- Sunday 04:30 `restore_test_auto.sh` restores it into a temporary database, compares every table's row count with the counts taken at
-  dump time and messages the admins: ✅ passed / ❌ failed / ⚠️ copy missing or older than 8 days.
-- Why this is acceptable: the copy holds the same data the live database already holds on that server, so it reveals nothing more
-  to someone who has the server. The offsite copies (Telegram, Drive) still need the main key, which stays in the password manager and on paper.
-- What it proves: the dump is complete, readable and restorable by the same scripts. It does NOT prove that the main private key still works —
-  the admin should do a manual restore with the real key (RUNBOOK) at least twice a year.
-
-### Bot watchdog
-The bot refreshes `bot_heartbeat` every minute. `watchdog.sh` (backup container, every 5 min, independent of the bot) messages the admins
-once if there has been no beat for 10 minutes ("🚨 Bot ishlamayapti") and once when it is back. If the whole server is down nothing can message
-you — add a free external uptime check (see RUNBOOK, "External monitoring").
+### ⚠️ Open issue: weekly AUTOMATIC restore test
+Restoring requires the private key, but by rule the private key is not kept on the server. These two requirements conflict.
+For now: the test is manual (the admin temporarily places the key, RUNBOOK 5). Options will be reviewed in phase 9
+(e.g. an additional layer of encryption with a separate key pair used only for testing).
 
 ## 3. Integrity check (nightly)
-Implemented (`bot/services/integrity.py`, job at 02:00, admins only, once per day). It only reports ids, never changes data:
-overpaid debt, payment allocations ≠ amount, payment allocated to a cancelled debt, possible duplicate payment (same customer/amount/day within 60 s),
-negative stock, regular debt without items, imported debt total ≠ items, active remainder debt of a cancelled sale.
+Negative debt, overpayment, duplicate payment, negative stock, orphaned records → report to the admin.
 
 ## 4. Reconciliation with the till
 A reminder in the 20:00 report.

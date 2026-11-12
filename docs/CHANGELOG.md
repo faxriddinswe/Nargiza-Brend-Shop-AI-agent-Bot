@@ -1,11 +1,5 @@
 # Changelog
 
-## [0.8.0] — Stage 9 (data safety, part 2) — 2026-11-12
-- Nightly integrity check at 02:00 (`bot/services/integrity.py`): reports impossible records to admins; read-only.
-- Weekly AUTOMATIC restore test with a separate test key (`scripts/restore_test_auto.sh`, Sunday 04:30), result messaged to admins.
-- Bot watchdog: `bot_heartbeat` (migration 0011) + `scripts/watchdog.sh` in the backup container.
-- Guides (disabled until you create accounts): Google Drive copy, external uptime monitoring — docs/RUNBOOK.md.
-
 ## [0.7.0] — Stage 8 (old notebook import, typed) — 2026-11-12
 - `/daftar`: typed notebook lines → preview (✅ ⚠️ ❓ 🔁) → fix → one-tap save; duplicate check by phone and by identical earlier import.
 - Imported debts: shop section, original date, no goods/stock, excluded from "new debt"/turnover; migration 0010.
