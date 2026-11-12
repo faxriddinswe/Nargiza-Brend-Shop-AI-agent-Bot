@@ -15,6 +15,7 @@ import structlog
 from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
+from sqlalchemy import text as sql_text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.config import Settings
@@ -214,6 +215,20 @@ async def integrity_check(bot: Sender, sm: SM, *, today: date | None = None) -> 
     return sent
 
 
+async def heartbeat(sm: SM) -> None:
+    """Every minute: proof of life for the independent watchdog (scripts/watchdog.sh)."""
+    try:
+        async with uow(sm, actor_kind="system") as s:
+            await s.execute(
+                sql_text(
+                    "INSERT INTO bot_heartbeat (id, beat_at) VALUES (1, now()) "
+                    "ON CONFLICT (id) DO UPDATE SET beat_at = now()"
+                )
+            )
+    except Exception as e:  # a failed beat must never crash the bot; the watchdog will notice
+        log.warning("heartbeat_failed", error=type(e).__name__)
+
+
 def setup_scheduler(bot: Sender, sm: SM, settings: Settings) -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler(timezone=settings.tz)
     common = {
@@ -244,6 +259,7 @@ def setup_scheduler(bot: Sender, sm: SM, settings: Settings) -> AsyncIOScheduler
     scheduler.add_job(
         integrity_check, "cron", hour=2, minute=0, id="integrity", args=[bot, sm], **common
     )
+    scheduler.add_job(heartbeat, "interval", seconds=60, id="heartbeat", args=[sm], **common)
     return scheduler
 
 

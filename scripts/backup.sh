@@ -90,6 +90,22 @@ if [ -n "$PREV" ]; then
     fi
 fi
 
+# --- 2b. Haftalik: avtomatik tiklash testi uchun ALOHIDA nusxa (faqat serverda, alohida test kaliti bilan) ---
+# Asosiy yopiq kalit serverda bo'lmaydi, shuning uchun test uchun alohida kalit juftligi ishlatiladi (docs/DATA_SAFETY.md).
+# Bu nusxa serverda bo'lgan ma'lumotning o'zi: jonli bazadan ortiq narsani oshkor qilmaydi; Telegram/Drive'ga YUBORILMAYDI.
+if [ "$KIND" = "weekly" ]; then
+    TESTDIR="$BASE/restore-test"
+    mkdir -p "$TESTDIR"
+    if [ ! -f "$TESTDIR/test.key" ]; then
+        age-keygen -o "$TESTDIR/test.key" 2>/dev/null
+    fi
+    TEST_RECIPIENT="$(age-keygen -y "$TESTDIR/test.key")"
+    pg_dump "${PG[@]}" --format=custom --no-owner | age -r "$TEST_RECIPIENT" -o "$TESTDIR/latest.dump.age.partial" \
+        && mv "$TESTDIR/latest.dump.age.partial" "$TESTDIR/latest.dump.age" \
+        && cp "$OUT.counts" "$TESTDIR/latest.dump.age.counts" \
+        || log "OGOHLANTIRISH: test nusxasi yaratilmadi"
+fi
+
 # --- 3. Eski backup'larni tozalash (3-2-1 jadvali) ------------------------------
 case "$KIND" in
     hourly)  KEEP_MIN=$((48 * 60)) ;;       # 48 soat

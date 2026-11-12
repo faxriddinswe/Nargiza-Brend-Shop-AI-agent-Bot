@@ -105,3 +105,17 @@ their number and you receive a confirmation request.
 ## 9. If the admin's phone number changes
 Update `ADMIN_PHONES` in `.env` → `docker compose up -d bot`. On startup, the bot automatically revokes admin
 rights from the old number.
+
+
+## Optional: Google Drive copy (offsite, encrypted)
+The files are already encrypted with `age`, so Drive only ever sees ciphertext. Needs a Google account — nothing is sent until you set it up.
+1. Install rclone on the SERVER (not in the bot): `curl https://rclone.org/install.sh | sudo bash`.
+2. `rclone config` → new remote `gdrive` (type `drive`, scope `drive.file`). On a headless server finish the login with `rclone authorize "drive"` on your own computer.
+3. Test: `rclone copy ./backups/daily gdrive:nargiza-backups/daily --max-age 2d`.
+4. Cron on the host (not the container), daily 03:40: `rclone copy /path/to/backups/daily gdrive:nargiza-backups/daily --max-age 2d` and `rclone delete gdrive:nargiza-backups --min-age 90d`.
+5. Never upload `backups/restore-test/` (its key is next to it).
+
+## External monitoring (server down / no internet)
+The in-bot watchdog cannot report a dead server. Create a free account at healthchecks.io (or UptimeRobot) and add a Telegram alert to your own chat:
+- healthchecks.io: make a check with period 1 day; add `curl -fsS https://hc-ping.com/<your-uuid>` as the last line of `backup.sh` daily (or a host cron).
+  If the ping stops, healthchecks messages you.

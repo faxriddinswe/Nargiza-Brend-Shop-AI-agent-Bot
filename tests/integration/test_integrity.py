@@ -84,3 +84,12 @@ async def test_job_goes_to_admins_only_and_once_a_day(sm: SM) -> None:
     assert await jobs.integrity_check(bot, sm, today=TODAY) == 0
     assert [c for c, _ in bot.sent] == [2]
     assert "muammo yo'q" in bot.sent[0][1]
+
+
+async def test_heartbeat_upserts_one_row(sm: SM) -> None:
+    from sqlalchemy import text
+
+    await jobs.heartbeat(sm)
+    await jobs.heartbeat(sm)
+    async with read_session(sm) as s:
+        assert await s.scalar(text("SELECT count(*) FROM bot_heartbeat")) == 1
