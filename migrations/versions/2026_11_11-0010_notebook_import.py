@@ -24,7 +24,7 @@ def upgrade() -> None:
     op.get_bind().execute(
         sa.text(
             "INSERT INTO categories (section_id, name, is_active) "
-            "SELECT id, 'eski daftar', false FROM sections WHERE code = 'shop'"
+            "SELECT id, 'eski daftar', false FROM sections WHERE code = 'shop' ON CONFLICT DO NOTHING"
         )
     )
 

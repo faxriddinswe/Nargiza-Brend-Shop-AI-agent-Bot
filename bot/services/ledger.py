@@ -312,7 +312,9 @@ async def import_debt(
         await session.execute(
             select(Category.id, Category.section_id).where(Category.name == IMPORT_CATEGORY)
         )
-    ).one()
+    ).first()
+    if cat is None:
+        raise LedgerError("import category missing (run migrations)")
     debt = Debt(
         customer_id=customer_id,
         section_id=cat.section_id,
